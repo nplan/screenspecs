@@ -330,6 +330,80 @@ fieldset legend {
     color: var(--text-white) !important;
 }
 
+/* Angle toggle component for visualizer (same style as mode-toggle) */
+.angle-toggle {
+    position: relative;
+    width: 120px;
+    height: 40px;
+    display: inline-block;
+    background-color: var(--bg-secondary);
+    border-radius: 20px;
+    box-shadow: var(--shadow-medium);
+    transition: all 0.2s ease;
+}
+
+.angle-toggle input[type="radio"] {
+    display: none;
+}
+
+.angle-toggle .slider {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 56px;
+    height: 36px;
+    background-color: var(--text-secondary);
+    border-radius: 18px;
+    transition: left 0.3s ease;
+    box-shadow: var(--shadow-medium);
+    z-index: 0;
+}
+
+.angle-toggle.isometric-selected .slider {
+    left: 62px;
+}
+
+.angle-toggle label {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 50%;
+    text-align: center;
+    z-index: 1;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.3s ease;
+    white-space: nowrap;
+}
+
+.angle-toggle label:first-of-type {
+    left: 0;
+}
+
+.angle-toggle label:last-of-type {
+    right: 0;
+}
+
+/* Default state: Front is highlighted (white), 3D is not (gray) */
+.angle-toggle label[for="frontView"] {
+    color: var(--text-white) !important;
+}
+
+.angle-toggle label[for="isometricView"] {
+    color: var(--text-secondary) !important;
+}
+
+/* 3D selected state: 3D is highlighted (white), Front is not (gray) */
+.angle-toggle.isometric-selected label[for="frontView"] {
+    color: var(--text-secondary) !important;
+}
+
+.angle-toggle.isometric-selected label[for="isometricView"] {
+    color: var(--text-white) !important;
+}
+
 /* Error handling and validation */
 .validation-errors {
     margin: 1rem 0;
@@ -403,6 +477,14 @@ fieldset legend {
     .mode-toggle {
         justify-content: center;
     }
+    
+    .view-angle-controls {
+        justify-content: center;
+    }
+
+    .angle-toggle {
+        justify-content: center;
+    }
 }
 
 @media (max-width: 600px) {
@@ -419,6 +501,16 @@ fieldset legend {
     }
     
     .mode-toggle .slider {
+        width: 46px;
+        height: 32px;
+    }
+    
+    .angle-toggle {
+        width: 100px;
+        height: 36px;
+    }
+    
+    .angle-toggle .slider {
         width: 46px;
         height: 32px;
     }
@@ -548,6 +640,10 @@ fieldset legend {
     }
     
     .mode-toggle.fov-selected .slider {
+        left: 52px;
+    }
+    
+    .angle-toggle.isometric-selected .slider {
         left: 52px;
     }
 }

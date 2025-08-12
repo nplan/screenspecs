@@ -12,8 +12,8 @@ class ScreenVisualizer3D {
         this.canvasContainer = this.canvas ? this.canvas.parentElement : null;
         
         this.screens = [];
-        this.viewMode = CONFIG.DEFAULTS.VIEW_MODE;
         this.viewDistance = CONFIG.DEFAULTS.VIEW_DISTANCE;
+        this.viewAngle = 'front'; // 'front' or '3d' for isometric
         this.colors = CONFIG.COLORS.SCREEN_COLORS;
         
         // Theme awareness
@@ -28,7 +28,6 @@ class ScreenVisualizer3D {
         
         // Optimization: Cache previous state for change detection
         this.lastScreensHash = null;
-        this.lastViewMode = null;
         this.lastCanvasSize = { width: 0, height: 0 };
         this.lastTheme = this.currentTheme;
         
@@ -88,7 +87,7 @@ class ScreenVisualizer3D {
         
         // Position camera at a typical viewing distance for a 24" monitor
         // Default distance from config is 800mm = 0.8 meters
-        this.camera.position.z = 0.8;
+        this.updateCameraPosition();
         
         // Create renderer using the existing canvas
         try {
@@ -276,6 +275,20 @@ class ScreenVisualizer3D {
         return centerPanel;
     }
     
+    updateCameraPosition() {
+        if (!this.camera) return;
+        
+        if (this.viewAngle === 'front') {
+            // Front view - camera directly in front
+            this.camera.position.set(0, 0, 0.8);
+            this.camera.lookAt(0, 0, 0);
+        } else {
+            // 3D isometric view - camera at an angle
+            this.camera.position.set(0.5, 0.3, 0.8);
+            this.camera.lookAt(0, 0, 0);
+        }
+    }
+    
     animate() {
         if (!this.isInitialized) {
             return;
@@ -381,7 +394,7 @@ class ScreenVisualizer3D {
         
         return screens.map(screen => {
             return `${screen.diagonal}-${screen.resolution[0]}x${screen.resolution[1]}-${screen.distance}-${screen.curvature}-${screen.scaling}-${screen.screenNumber}`;
-        }).sort().join('|') + `|${this.viewMode}`;
+        }).sort().join('|');
     }
 
     /**
@@ -414,20 +427,18 @@ class ScreenVisualizer3D {
         }
     }
 
-    setViewMode(mode) {
-        if (this.viewMode !== mode) {
-            this.viewMode = mode;
-            if (this.isInitialized) {
-                this.createScreens(); // Recreate screens for new view mode
-            }
-        }
-    }
-
     setViewDistance(distance) {
         if (this.viewDistance !== distance) {
             this.viewDistance = distance;
-            if (this.isInitialized && this.viewMode === 'fovBased') {
-                this.createScreens(); // Recreate screens for new distance
+            // Note: viewDistance is kept for potential future use but not currently used in rendering
+        }
+    }
+
+    setViewAngle(angle) {
+        if (this.viewAngle !== angle) {
+            this.viewAngle = angle;
+            if (this.isInitialized) {
+                this.updateCameraPosition();
             }
         }
     }

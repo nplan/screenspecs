@@ -51,13 +51,13 @@ class ScreenManager {
         this.validator.setUnitManager(this.unitManager);
     }
     
-    updatePillToggle(viewMode) {
-        const modeToggle = document.querySelector('.mode-toggle');
-        if (modeToggle) {
-            if (viewMode === 'fovBased') {
-                modeToggle.classList.add('fov-selected');
+    updateAngleToggle(viewAngle) {
+        const angleToggle = document.querySelector('.angle-toggle');
+        if (angleToggle) {
+            if (viewAngle === '3d') {
+                angleToggle.classList.add('isometric-selected');
             } else {
-                modeToggle.classList.remove('fov-selected');
+                angleToggle.classList.remove('isometric-selected');
             }
         }
     }
@@ -110,18 +110,18 @@ class ScreenManager {
             }
         }
         
-        // Setup visualizer controls
-        document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
+        // Setup view angle controls
+        document.querySelectorAll('input[name="viewAngle"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
-                this.visualizer.setViewMode(e.target.value);
-                this.updatePillToggle(e.target.value);
+                this.visualizer.setViewAngle(e.target.value);
+                this.updateAngleToggle(e.target.value);
                 this.autoSave(); // Save UI state changes
-                this.updateURL(); // Update URL with new view mode
+                this.updateURL(); // Update URL with new view angle
             });
         });
         
-        // Initialize pill toggle state
-        this.updatePillToggle('realSize');
+        // Initialize angle toggle state
+        this.updateAngleToggle('front');
         
         // Restore UI state if available (URL state takes precedence)
         const stateToRestore = urlState || savedState;
@@ -702,14 +702,7 @@ class ScreenManager {
             curvature: null,
             scaling: 100
         });
-        
-        // Reset view mode to default
-        const defaultViewMode = document.querySelector('input[name="viewMode"][value="realSize"]');
-        if (defaultViewMode) {
-            defaultViewMode.checked = true;
-            this.visualizer.setViewMode('realSize');
-            this.updatePillToggle('realSize');
-        }
+
         
         // Re-enable auto-save and save the default state
         CONFIG.STORAGE.AUTO_SAVE = originalAutoSave;
@@ -774,10 +767,6 @@ class ScreenManager {
      * @returns {Object} Current state object
      */
     getCurrentState() {
-        // Get current view mode
-        const checkedViewMode = document.querySelector('input[name="viewMode"]:checked');
-        const viewMode = checkedViewMode ? checkedViewMode.value : 'realSize';
-        
         return {
             screens: this.screens.map(screen => ({
                 id: screen.id,
@@ -790,9 +779,7 @@ class ScreenManager {
                 curvature: screen.curvature,
                 scaling: screen.scaling
             })),
-            uiState: {
-                viewMode: viewMode
-            }
+            uiState: {}
         };
     }
 
@@ -1069,14 +1056,7 @@ class ScreenManager {
      * @param {Object} uiState - UI state to restore
      */
     restoreUIState(uiState) {
-        if (uiState.viewMode) {
-            const viewModeRadio = document.querySelector(`input[name="viewMode"][value="${uiState.viewMode}"]`);
-            if (viewModeRadio) {
-                viewModeRadio.checked = true;
-                this.visualizer.setViewMode(uiState.viewMode);
-                this.updatePillToggle(uiState.viewMode);
-            }
-        }
+        // No UI state to restore for now
     }
 
     /**

@@ -176,7 +176,6 @@ const CONFIG = {
     // Default Values
     DEFAULTS: {
         VIEW_DISTANCE: 800, // millimeters
-        VIEW_MODE: 'realSize',
         PRESET_DIAGONAL: 24, // inches
         PRESET_RESOLUTION: [1920, 1080], // pixels
         PRESET_DISTANCE: 600, // millimeters (60 cm default)
@@ -272,9 +271,6 @@ const CONFIG = {
             
             // View controls
             CANVAS: 'Visual representation of monitor configurations',
-            VIEW_MODE_GROUP: 'Visualization mode selection',
-            REAL_SIZE: 'Show monitors at actual size relative to each other',
-            FOV_BASED: 'Show monitors based on field of view from viewing distance',
             
             // Actions
             ADD_SCREEN: 'Add new monitor configuration',

@@ -42,6 +42,12 @@
     align-items: center;
 }
 
+.view-angle-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
 /* Responsive design for visualizer */
 @media (max-width: 768px) {
     .screen-visualizer {

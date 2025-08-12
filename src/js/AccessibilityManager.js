@@ -58,16 +58,6 @@ export class AccessibilityManager {
         // Canvas visualizer
         this.setAriaLabel('#screenCanvas', 'Visual representation of monitor configurations');
         
-        // View mode controls
-        const viewModeControls = document.querySelector('.view-mode-controls');
-        if (viewModeControls) {
-            viewModeControls.setAttribute('role', 'radiogroup');
-            viewModeControls.setAttribute('aria-label', 'Visualization mode selection');
-        }
-
-        this.setAriaLabel('#realSize', 'Show monitors at actual size relative to each other');
-        this.setAriaLabel('#fovBased', 'Show monitors based on field of view from viewing distance');
-
         // Add screen button
         this.setAriaLabel('#add-screen', 'Add new monitor configuration');
 
