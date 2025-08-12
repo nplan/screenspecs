@@ -1,7 +1,7 @@
 // Import dependencies
 import { CONFIG } from './config.js';
 import { Screen } from './Screen.js';
-import { ScreenVisualizer } from './ScreenVisualizer.js';
+import { ScreenVisualizer3D } from './ScreenVisualizer3D.js';
 import { ValidationManager } from './ValidationManager.js';
 import { StorageManager } from './StorageManager.js';
 import { URLManager } from './URLManager.js';
@@ -11,8 +11,14 @@ import { AmazonLinkManager } from './AmazonLinkManager.js';
 // Screen Manager - Centralized state and operations
 class ScreenManager {
     constructor() {
+        console.log('ScreenManager constructor called');
+        console.log('CONFIG.SELECTORS.CANVAS_ID:', CONFIG.SELECTORS.CANVAS_ID);
+        
         this.screens = [];
-        this.visualizer = new ScreenVisualizer(CONFIG.SELECTORS.CANVAS_ID);
+        console.log('Creating ScreenVisualizer3D...');
+        this.visualizer = new ScreenVisualizer3D(CONFIG.SELECTORS.CANVAS_ID);
+        console.log('ScreenVisualizer3D created');
+        
         this.validator = new ValidationManager();
         this.storage = new StorageManager();
         this.urlManager = new URLManager();
