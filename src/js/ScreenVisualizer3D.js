@@ -55,6 +55,10 @@ class ScreenVisualizer3D {
         this.targetSphereOpacity = 0; // Target opacity for sphere fade in/out
         this.sphereVisible = false; // Track intended visibility state
         
+        // ResizeObserver for responsive canvas sizing
+        this.resizeObserver = null;
+        this.resizeTimeoutId = null;
+        
         // Initialize after a short delay to ensure CSS layout is complete
         setTimeout(() => {
             this.init3D();
@@ -84,18 +88,13 @@ class ScreenVisualizer3D {
         this.canvas = newCanvas;
         
         
-        // Force the canvas to have proper dimensions
-        const container = canvasContainer;
-        const containerRect = container.getBoundingClientRect();
-        
-        // Set explicit width and height
+        // Set canvas display size via CSS
         this.canvas.style.width = '100%';
-        this.canvas.style.height = '300px';
+        this.canvas.style.height = '100%';
         this.canvas.style.display = 'block';
         
-        // Use explicit pixel values for canvas internal dimensions
-        this.canvas.width = Math.max(containerRect.width || 800, 400);
-        this.canvas.height = 300;
+        // Set initial canvas internal dimensions to match display size
+        this.updateCanvasSize();
 
         // Create the Three.js scene
         this.scene = new THREE.Scene();
@@ -112,9 +111,10 @@ class ScreenVisualizer3D {
         
         // Set up camera with human-eye parameters
         // Human eye comfortable FOV is around 50-60 degrees
+        // Note: aspect ratio will be set properly in updateCanvasSize()
         this.camera = new THREE.PerspectiveCamera(
             55, // FOV - comfortable human viewing angle
-            this.canvas.width / this.canvas.height, 
+            1, // Temporary aspect ratio, will be updated in updateCanvasSize()
             0.1, 
             1000
         );
@@ -148,9 +148,8 @@ class ScreenVisualizer3D {
         // Set up OrbitControls AFTER renderer is created
         this.setupOrbitControls();
         
-        // Make sure we set the size correctly 
-        this.renderer.setSize(this.canvas.width, this.canvas.height, false);
-        this.renderer.setPixelRatio(window.devicePixelRatio || 1);
+        // Update canvas size and renderer properly
+        this.updateCanvasSize();
         
         // Set transparent background (no background color)
         this.renderer.setClearColor(0x000000, 0); // Black with 0 alpha = transparent
@@ -371,6 +370,24 @@ class ScreenVisualizer3D {
             this.orbitState.mouseX = event.clientX;
             this.orbitState.mouseY = event.clientY;
             
+            // Stop camera animation when user starts manual orbiting
+            this.isAnimating = false;
+            
+            // Update orbit state to use current camera position as starting point
+            // This prevents strange zoom effects when interrupting animation
+            if (this.viewAngle === '3d') {
+                // Use current camera position and current target to recalculate spherical coordinates
+                const offset = new THREE.Vector3();
+                offset.copy(this.camera.position).sub(this.orbitState.target);
+                
+                const radius = offset.length();
+                if (radius > 0) { // Avoid division by zero
+                    const phi = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
+                    const theta = Math.atan2(offset.x, offset.z);
+                    this.orbitState.spherical.set(radius, phi, theta);
+                }
+            }
+            
             canvas.style.cursor = 'grabbing';
         };
         
@@ -531,6 +548,18 @@ class ScreenVisualizer3D {
             this.camera.position.copy(this.targetCameraPosition);
             this.camera.lookAt(this.targetCameraLookAt);
             this.isAnimating = false;
+            
+            // Update orbit state spherical coordinates to match final camera position in 3D view
+            if (this.viewAngle === '3d') {
+                const offset = new THREE.Vector3();
+                offset.copy(this.camera.position).sub(this.orbitState.target);
+                
+                const radius = offset.length();
+                const phi = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
+                const theta = Math.atan2(offset.x, offset.z);
+                
+                this.orbitState.spherical.set(radius, phi, theta);
+            }
         }
     }
     
@@ -660,24 +689,65 @@ class ScreenVisualizer3D {
             this.handleResize();
         });
         
+        // Use ResizeObserver to watch for canvas container size changes
+        if (this.canvasContainer && window.ResizeObserver) {
+            this.resizeObserver = new ResizeObserver((entries) => {
+                // Use requestAnimationFrame to debounce resize events
+                if (this.resizeTimeoutId) {
+                    cancelAnimationFrame(this.resizeTimeoutId);
+                }
+                this.resizeTimeoutId = requestAnimationFrame(() => {
+                    this.handleResize();
+                });
+            });
+            this.resizeObserver.observe(this.canvasContainer);
+        }
+        
         // Listen for theme changes
         this.setupThemeListener();
+    }
+
+    updateCanvasSize() {
+        if (!this.canvas) return;
+        
+        // Get the display size of the canvas from CSS
+        const displayWidth = this.canvas.clientWidth;
+        const displayHeight = this.canvas.clientHeight;
+        
+        // Check if the canvas is not displayed (width/height would be 0)
+        if (displayWidth === 0 || displayHeight === 0) {
+            // Fallback to reasonable defaults
+            this.canvas.width = 800;
+            this.canvas.height = 400;
+        } else {
+            // Set canvas internal dimensions to match display size, accounting for device pixel ratio
+            const pixelRatio = window.devicePixelRatio || 1;
+            this.canvas.width = Math.floor(displayWidth * pixelRatio);
+            this.canvas.height = Math.floor(displayHeight * pixelRatio);
+        }
+        
+        // Update renderer and camera if they exist
+        if (this.renderer && this.camera) {
+            // Update renderer size (use false to prevent CSS size changes)
+            this.renderer.setSize(this.canvas.width, this.canvas.height, false);
+            this.renderer.setPixelRatio(window.devicePixelRatio || 1);
+            
+            // Update camera aspect ratio using actual canvas dimensions
+            this.camera.aspect = this.canvas.width / this.canvas.height;
+            this.camera.updateProjectionMatrix();
+        }
+        
+        // Update cached canvas size for change detection
+        this.lastCanvasSize = { width: this.canvas.width, height: this.canvas.height };
     }
 
     handleResize() {
         if (!this.isInitialized || !this.canvas) return;
         
-        const rect = this.canvas.getBoundingClientRect();
+        // Update canvas size and camera/renderer
+        this.updateCanvasSize();
         
-        // Update camera aspect ratio
-        this.camera.aspect = rect.width / rect.height;
-        this.camera.updateProjectionMatrix();
-        
-        // Update renderer size
-        this.renderer.setSize(rect.width, rect.height);
-        
-        // Reset cache when canvas size changes
-        this.lastCanvasSize = { width: rect.width, height: rect.height };
+        // Reset screen cache to trigger re-render if needed
         this.lastScreensHash = null;
     }
 
@@ -757,14 +827,14 @@ class ScreenVisualizer3D {
      */
     hasScreenDataChanged(screens) {
         const currentHash = this.generateScreensHash(screens);
-        const rect = this.canvasContainer.getBoundingClientRect();
-        const sizeChanged = this.lastCanvasSize.width !== rect.width || 
-                          this.lastCanvasSize.height !== rect.height;
+        const currentCanvasSize = { width: this.canvas.width, height: this.canvas.height };
+        const sizeChanged = this.lastCanvasSize.width !== currentCanvasSize.width || 
+                          this.lastCanvasSize.height !== currentCanvasSize.height;
         const themeChanged = this.hasThemeChanged();
         
         if (this.lastScreensHash !== currentHash || sizeChanged || themeChanged) {
             this.lastScreensHash = currentHash;
-            this.lastCanvasSize = { width: rect.width, height: rect.height };
+            this.lastCanvasSize = { width: currentCanvasSize.width, height: currentCanvasSize.height };
             return true;
         }
         
@@ -800,6 +870,21 @@ class ScreenVisualizer3D {
             this.viewAngle = angle;
             if (this.isInitialized) {
                 this.updateCameraPosition();
+                
+                // When switching to 3D view, ensure orbit state is properly initialized
+                // to prevent snapping back to old position
+                if (angle === '3d') {
+                    // Use current camera position to initialize orbit state if animation is in progress
+                    const offset = new THREE.Vector3();
+                    offset.copy(this.camera.position).sub(this.orbitState.target);
+                    
+                    const radius = offset.length();
+                    if (radius > 0) { // Avoid division by zero
+                        const phi = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
+                        const theta = Math.atan2(offset.x, offset.z);
+                        this.orbitState.spherical.set(radius, phi, theta);
+                    }
+                }
             }
         }
     }
@@ -837,6 +922,18 @@ class ScreenVisualizer3D {
         if (this.responseTimeoutId) {
             clearTimeout(this.responseTimeoutId);
             this.responseTimeoutId = null;
+        }
+        
+        // Clear any pending resize timeout
+        if (this.resizeTimeoutId) {
+            cancelAnimationFrame(this.resizeTimeoutId);
+            this.resizeTimeoutId = null;
+        }
+        
+        // Clean up ResizeObserver
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
         }
         
         // Clean up manual orbit controls
