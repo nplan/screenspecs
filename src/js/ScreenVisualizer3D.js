@@ -200,11 +200,20 @@ class ScreenVisualizer3D {
                 });
             }
             
-            // Remove center panel
+            // Remove center panel (can be single mesh or group)
             if (meshGroup.centerPanel) {
                 this.scene.remove(meshGroup.centerPanel);
-                meshGroup.centerPanel.geometry.dispose();
-                meshGroup.centerPanel.material.dispose();
+                if (meshGroup.centerPanel.children && meshGroup.centerPanel.children.length > 0) {
+                    // It's a group (curved screen) - dispose all children
+                    meshGroup.centerPanel.children.forEach(child => {
+                        child.geometry.dispose();
+                        child.material.dispose();
+                    });
+                } else {
+                    // It's a single mesh (flat screen) - dispose directly
+                    meshGroup.centerPanel.geometry.dispose();
+                    meshGroup.centerPanel.material.dispose();
+                }
             }
         });
         this.screenMeshes = [];
@@ -239,16 +248,20 @@ class ScreenVisualizer3D {
         const colorIndex = (screenNumber - 1) % CONFIG.COLORS.SCREEN_COLORS.length;
         const screenColor = new THREE.Color(CONFIG.COLORS.SCREEN_COLORS[colorIndex]);
         
-        // Create the border frame instead of a solid screen
-        const border = this.createScreenBorder(widthMeters, heightMeters, screenColor);
+        // Get curvature value (null for flat screens, number for curved)
+        const curvature = screenData.curvature || null;
         
-        // Create translucent center panel
-        const centerPanel = this.createCenterPanel(widthMeters, heightMeters, screenColor);
+        // Create the border frame with curvature support
+        const border = this.createScreenBorder(widthMeters, heightMeters, screenColor, curvature);
+        
+        // Create translucent center panel with curvature support
+        const centerPanel = this.createCenterPanel(widthMeters, heightMeters, screenColor, curvature);
         
         // Position each screen at its respective distance from the camera (which is at origin)
         // Convert distance from mm to meters and use negative Z (screens are in front of camera)
         // Each screen gets positioned at its own user-specified distance
-        const distanceMeters = -(screenData.distance || CONFIG.DEFAULTS.PRESET_DISTANCE) / 1000;
+        let distanceMeters = -(screenData.distance || CONFIG.DEFAULTS.PRESET_DISTANCE) / 1000;
+        
         const zOffset = index * 0.001; // Small offset to prevent z-fighting when distances are same
         
         border.position.set(0, 0, distanceMeters + zOffset);
@@ -267,60 +280,171 @@ class ScreenVisualizer3D {
         });
     }
     
-    createScreenBorder(screenWidth, screenHeight, screenColor) {
+    createScreenBorder(screenWidth, screenHeight, screenColor, curvature = null) {
         // Create thick border frame
         const borderThickness = 0.005; // 5mm thick border
         const borderDepth = 0.003;     // 3mm depth
         
         const borderGroup = new THREE.Group();
         
-        // Create border material - opaque
+        // Create border material - opaque, double-sided for curved borders
         const borderMaterial = new THREE.MeshBasicMaterial({ 
             color: screenColor.clone().multiplyScalar(0.9),
-            transparent: false
+            transparent: false,
+            side: THREE.DoubleSide
         });
         
-        // Create four border pieces (top, bottom, left, right)
-        // Top border
-        const topGeometry = new THREE.BoxGeometry(screenWidth, borderThickness, borderDepth);
-        const topBorder = new THREE.Mesh(topGeometry, borderMaterial);
-        topBorder.position.set(0, (screenHeight + borderThickness) / 2, 0);
-        borderGroup.add(topBorder);
-        
-        // Bottom border  
-        const bottomGeometry = new THREE.BoxGeometry(screenWidth, borderThickness, borderDepth);
-        const bottomBorder = new THREE.Mesh(bottomGeometry, borderMaterial);
-        bottomBorder.position.set(0, -(screenHeight + borderThickness) / 2, 0);
-        borderGroup.add(bottomBorder);
-        
-        // Left border
-        const leftGeometry = new THREE.BoxGeometry(borderThickness, screenHeight + borderThickness * 2, borderDepth);
-        const leftBorder = new THREE.Mesh(leftGeometry, borderMaterial);
-        leftBorder.position.set(-(screenWidth + borderThickness) / 2, 0, 0);
-        borderGroup.add(leftBorder);
-        
-        // Right border
-        const rightGeometry = new THREE.BoxGeometry(borderThickness, screenHeight + borderThickness * 2, borderDepth);
-        const rightBorder = new THREE.Mesh(rightGeometry, borderMaterial);
-        rightBorder.position.set((screenWidth + borderThickness) / 2, 0, 0);
-        borderGroup.add(rightBorder);
+        if (curvature === null) {
+            // Flat screen borders - use box geometry for all borders
+            
+            // Top border
+            const topGeometry = new THREE.BoxGeometry(screenWidth, borderThickness, borderDepth);
+            const topBorder = new THREE.Mesh(topGeometry, borderMaterial);
+            topBorder.position.set(0, (screenHeight + borderThickness) / 2, 0);
+            borderGroup.add(topBorder);
+            
+            // Bottom border  
+            const bottomGeometry = new THREE.BoxGeometry(screenWidth, borderThickness, borderDepth);
+            const bottomBorder = new THREE.Mesh(bottomGeometry, borderMaterial);
+            bottomBorder.position.set(0, -(screenHeight + borderThickness) / 2, 0);
+            borderGroup.add(bottomBorder);
+            
+            // Left border
+            const leftGeometry = new THREE.BoxGeometry(borderThickness, screenHeight + borderThickness * 2, borderDepth);
+            const leftBorder = new THREE.Mesh(leftGeometry, borderMaterial);
+            leftBorder.position.set(-(screenWidth + borderThickness) / 2, 0, 0);
+            borderGroup.add(leftBorder);
+            
+            // Right border
+            const rightGeometry = new THREE.BoxGeometry(borderThickness, screenHeight + borderThickness * 2, borderDepth);
+            const rightBorder = new THREE.Mesh(rightGeometry, borderMaterial);
+            rightBorder.position.set((screenWidth + borderThickness) / 2, 0, 0);
+            borderGroup.add(rightBorder);
+        } else {
+            // Curved screen borders using CylinderGeometry for consistency with panel
+            const radiusMeters = curvature / 1000; // Convert mm to meters
+            const arcAngle = screenWidth / radiusMeters; // Arc angle in radians
+            const segments = Math.max(32, Math.floor(arcAngle * 32)); // Smooth curve
+            
+            // Coordinate system:
+            // Arc formula: x = R*sin(angle), z = R*(1-cos(angle)) for angle ∈ [-arcAngle/2, +arcAngle/2]
+            // Center of arc at (0, y, 0), edges curve toward positive Z
+            // This is a circle centered at (0, y, R) with radius R
+            //
+            // CylinderGeometry at origin: surface at θ is (R*cos(θ), y, R*sin(θ))
+            // Positioned at (0, 0, R): surface becomes (R*cos(θ), y, R + R*sin(θ))
+            //
+            // To match our formula at θ = -PI/2 + angle:
+            //   x = R*cos(-PI/2 + angle) = R*sin(angle) ✓
+            //   z = R + R*sin(-PI/2 + angle) = R - R*cos(angle) = R*(1 - cos(angle)) ✓
+            //
+            // Use same thetaStart as center panel for alignment
+            const thetaStart = Math.PI - arcAngle / 2;
+            
+            // Top border - thin curved strip
+            const topGeometry = new THREE.CylinderGeometry(
+                radiusMeters, radiusMeters, borderThickness, segments, 1, true, thetaStart, arcAngle
+            );
+            const topBorder = new THREE.Mesh(topGeometry, borderMaterial);
+            topBorder.position.set(0, (screenHeight + borderThickness) / 2, radiusMeters);
+            borderGroup.add(topBorder);
+            
+            // Bottom border - thin curved strip
+            const bottomGeometry = new THREE.CylinderGeometry(
+                radiusMeters, radiusMeters, borderThickness, segments, 1, true, thetaStart, arcAngle
+            );
+            const bottomBorder = new THREE.Mesh(bottomGeometry, borderMaterial);
+            bottomBorder.position.set(0, -(screenHeight + borderThickness) / 2, radiusMeters);
+            borderGroup.add(bottomBorder);
+            
+            // Left and right borders at arc endpoints
+            // At θ = -PI/2 - arcAngle/2 (left): x = R*sin(-arcAngle/2) = -R*sin(arcAngle/2)
+            //                                   z = R*(1 - cos(-arcAngle/2)) = R*(1 - cos(arcAngle/2))
+            // At θ = -PI/2 + arcAngle/2 (right): x = R*sin(arcAngle/2)
+            //                                    z = R*(1 - cos(arcAngle/2))
+            
+            const leftX = -radiusMeters * Math.sin(arcAngle / 2);
+            const leftZ = radiusMeters * (1 - Math.cos(arcAngle / 2));
+            const rightX = radiusMeters * Math.sin(arcAngle / 2);
+            const rightZ = leftZ;
+            
+            // Left border (straight vertical line)
+            const leftGeometry = new THREE.BoxGeometry(borderThickness, screenHeight + borderThickness * 2, borderDepth);
+            const leftBorder = new THREE.Mesh(leftGeometry, borderMaterial);
+            leftBorder.position.set(leftX, 0, leftZ);
+            leftBorder.rotation.y = arcAngle / 2; // Rotate to align with curve tangent
+            borderGroup.add(leftBorder);
+            
+            // Right border (straight vertical line)
+            const rightGeometry = new THREE.BoxGeometry(borderThickness, screenHeight + borderThickness * 2, borderDepth);
+            const rightBorder = new THREE.Mesh(rightGeometry, borderMaterial);
+            rightBorder.position.set(rightX, 0, rightZ);
+            rightBorder.rotation.y = -arcAngle / 2; // Rotate to align with curve tangent
+            borderGroup.add(rightBorder);
+        }
         
         return borderGroup;
     }
     
-    createCenterPanel(screenWidth, screenHeight, screenColor) {
-        // Create translucent center panel
-        const panelGeometry = new THREE.PlaneGeometry(screenWidth, screenHeight);
-        const panelMaterial = new THREE.MeshBasicMaterial({ 
-            color: screenColor.clone().multiplyScalar(0.5),
-            transparent: true,
-            opacity: 0.1,
-            side: THREE.DoubleSide
-        });
-        
-        const centerPanel = new THREE.Mesh(panelGeometry, panelMaterial);
-        
-        return centerPanel;
+    createCenterPanel(screenWidth, screenHeight, screenColor, curvature = null) {
+        if (curvature === null) {
+            // Flat screen - use plane geometry
+            const panelGeometry = new THREE.PlaneGeometry(screenWidth, screenHeight);
+            const panelMaterial = new THREE.MeshBasicMaterial({ 
+                color: screenColor.clone().multiplyScalar(0.5),
+                transparent: true,
+                opacity: 0.1,
+                side: THREE.DoubleSide
+            });
+            
+            const centerPanel = new THREE.Mesh(panelGeometry, panelMaterial);
+            return centerPanel;
+        } else {
+            // Curved screen - use CylinderGeometry for seamless curved surface
+            // Must use same coordinate system as border
+            const radiusMeters = curvature / 1000; // Convert mm to meters
+            const arcAngle = screenWidth / radiusMeters; // Arc angle in radians
+            const segments = Math.max(32, Math.floor(arcAngle * 32)); // Smooth curve
+            
+            const panelMaterial = new THREE.MeshBasicMaterial({ 
+                color: screenColor.clone().multiplyScalar(0.5),
+                transparent: true,
+                opacity: 0.1,
+                side: THREE.DoubleSide
+            });
+            
+            // Coordinate system (same as border):
+            // Arc formula: x = R*sin(angle), z = R*(1-cos(angle)) for angle ∈ [-arcAngle/2, +arcAngle/2]
+            // Center of arc at (0, y, 0), edges curve toward positive Z
+            // This is a circle centered at (0, y, R) with radius R
+            //
+            // CylinderGeometry at origin: surface at θ is (R*cos(θ), y, R*sin(θ))
+            // Positioned at (0, 0, R): surface becomes (R*cos(θ), y, R + R*sin(θ))
+            //
+            // To match our formula at θ = -PI/2 + angle:
+            //   x = R*cos(-PI/2 + angle) = R*sin(angle) ✓
+            //   z = R + R*sin(-PI/2 + angle) = R - R*cos(angle) = R*(1 - cos(angle)) ✓
+            //
+            // So: thetaStart = -PI/2 - arcAngle/2, thetaLength = arcAngle
+            const thetaStart = Math.PI - arcAngle / 2;
+            const curvedGeometry = new THREE.CylinderGeometry(
+                radiusMeters,      // radiusTop
+                radiusMeters,      // radiusBottom
+                screenHeight,      // height
+                segments,          // radialSegments
+                1,                 // heightSegments
+                true,              // openEnded (no caps)
+                thetaStart,        // thetaStart
+                arcAngle           // thetaLength
+            );
+            
+            const curvedPanel = new THREE.Mesh(curvedGeometry, panelMaterial);
+            const panelGroup = new THREE.Group();
+            panelGroup.add(curvedPanel);
+            curvedPanel.position.set(0, 0, radiusMeters);
+            
+            return panelGroup;
+        }
     }
     
     createUserSphere() {
@@ -907,7 +1031,15 @@ class ScreenVisualizer3D {
             // Update center panel color - translucent
             if (meshGroup.centerPanel) {
                 const panelColor = screenColor.clone().multiplyScalar(0.5);
-                meshGroup.centerPanel.material.color.copy(panelColor);
+                if (meshGroup.centerPanel.children && meshGroup.centerPanel.children.length > 0) {
+                    // It's a group (curved screen) - update all children
+                    meshGroup.centerPanel.children.forEach(panelPiece => {
+                        panelPiece.material.color.copy(panelColor);
+                    });
+                } else {
+                    // It's a single mesh (flat screen) - update directly
+                    meshGroup.centerPanel.material.color.copy(panelColor);
+                }
             }
         });
         
