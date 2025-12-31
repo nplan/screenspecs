@@ -742,16 +742,80 @@ class ScreenVisualizer3D {
             canvas.style.cursor = this.orbitState.enabled ? 'grab' : 'default';
         };
         
+        // Touch support for orbit controls
+        const onTouchStart = (event) => {
+            if (!this.orbitState.enabled || event.touches.length !== 1) return;
+            
+            event.preventDefault();
+            this.orbitState.dragging = true;
+            const touch = event.touches[0];
+            this.orbitState.mouseX = touch.clientX;
+            this.orbitState.mouseY = touch.clientY;
+            
+            // Stop camera animation when user starts manual orbiting
+            this.isAnimating = false;
+            
+            // Update orbit state to use current camera position as starting point
+            if (this.viewAngle === '3d') {
+                const offset = new THREE.Vector3();
+                offset.copy(this.camera.position).sub(this.orbitState.target);
+                
+                const radius = offset.length();
+                if (radius > 0) {
+                    const phi = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
+                    const theta = Math.atan2(offset.x, offset.z);
+                    this.orbitState.spherical.set(radius, phi, theta);
+                }
+            }
+        };
+        
+        const onTouchMove = (event) => {
+            if (!this.orbitState.enabled || !this.orbitState.dragging || event.touches.length !== 1) return;
+            
+            event.preventDefault();
+            const touch = event.touches[0];
+            const deltaX = touch.clientX - this.orbitState.mouseX;
+            const deltaY = touch.clientY - this.orbitState.mouseY;
+            
+            // Convert touch movement to spherical coordinates (same speed as mouse)
+            const rotateSpeed = 0.01;
+            this.orbitState.spherical.theta -= deltaX * rotateSpeed;
+            this.orbitState.spherical.phi -= deltaY * rotateSpeed;
+            
+            // Constrain phi to prevent flipping
+            this.orbitState.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.orbitState.spherical.phi));
+            
+            this.updateCameraFromSpherical();
+            
+            this.orbitState.mouseX = touch.clientX;
+            this.orbitState.mouseY = touch.clientY;
+        };
+        
+        const onTouchEnd = (event) => {
+            if (this.orbitState.dragging) {
+                event.preventDefault();
+            }
+            this.orbitState.dragging = false;
+        };
+        
         // Add event listeners
         canvas.addEventListener('mousedown', onMouseDown);
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
+        
+        canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+        document.addEventListener('touchmove', onTouchMove, { passive: false });
+        document.addEventListener('touchend', onTouchEnd, { passive: false });
         
         // Store references for cleanup
         this.orbitState.cleanup = () => {
             canvas.removeEventListener('mousedown', onMouseDown);
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
+            
+            canvas.removeEventListener('touchstart', onTouchStart);
+            document.removeEventListener('touchmove', onTouchMove);
+            document.removeEventListener('touchend', onTouchEnd);
         };
         
         // Set initial cursor
