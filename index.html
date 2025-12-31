@@ -72,6 +72,16 @@
     <link rel="stylesheet" href="src/css/visualizer.css">
     <link rel="stylesheet" href="src/css/theme.css">
     <script defer src="https://cloud.umami.is/script.js" data-website-id="26033bb2-71ae-40cd-8c71-946af4004829"></script>
+    
+    <!-- Import map for Three.js modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
 </head>
 <body>
     <div class="header-controls" role="toolbar" aria-label="Application controls">
@@ -98,6 +108,8 @@
                     <span class="slider"></span>
                     <input type="radio" id="frontView" name="viewAngle" value="front" checked aria-label="Show monitors from front view">
                     <label for="frontView">Front</label>
+                    <input type="radio" id="topView" name="viewAngle" value="top" aria-label="Show monitors from top-down view">
+                    <label for="topView">Top</label>
                     <input type="radio" id="isometricView" name="viewAngle" value="3d" aria-label="Show monitors from 3D isometric angle">
                     <label for="isometricView">3D</label>
                 </fieldset>

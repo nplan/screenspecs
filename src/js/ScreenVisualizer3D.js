@@ -1,5 +1,8 @@
 // Import Three.js ES modules
-import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import * as THREE from 'three';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 
 // Import configuration constants
 import { CONFIG } from './config.js';
@@ -33,6 +36,7 @@ class ScreenVisualizer3D {
         };
         this.screenMeshes = []; // Array to hold multiple screen meshes
         this.userSphere = null; // Sphere representing user position (20cm diameter)
+        this.viewAxisLine = null; // Line showing view axis to furthest screen
         this.isInitialized = false;
         
         // Optimization: Cache previous state for change detection
@@ -115,8 +119,8 @@ class ScreenVisualizer3D {
         this.camera = new THREE.PerspectiveCamera(
             55, // FOV - comfortable human viewing angle
             1, // Temporary aspect ratio, will be updated in updateCanvasSize()
-            0.1, 
-            1000
+            0.1, // Near clipping plane at 100mm
+            1000 // Far clipping plane at 1000 meters
         );
         
         // Position camera at a typical viewing distance for a 24" monitor
@@ -163,12 +167,18 @@ class ScreenVisualizer3D {
         // Create user sphere (20cm diameter at origin)
         this.createUserSphere();
         
+        // Create view axis line to furthest screen
+        this.createViewAxisLine();
+        
         // Do an immediate render to test
         this.renderer.render(this.scene, this.camera);
         
         // Start animation loop
         this.isInitialized = true;
         this.animate();
+        
+        // Initialize toggle UI to match current view angle
+        this.updateAngleToggleUI(this.viewAngle);
     }
 
     createScreens() {
@@ -187,6 +197,48 @@ class ScreenVisualizer3D {
         });
     }
     
+    createViewAxisLine() {
+        // Remove existing view axis line if it exists
+        if (this.viewAxisLine) {
+            this.scene.remove(this.viewAxisLine);
+            this.viewAxisLine.geometry.dispose();
+            this.viewAxisLine.material.dispose();
+            this.viewAxisLine = null;
+        }
+        
+        // Calculate furthest screen distance
+        const furthestDistance = this.calculateFurthestScreenDistance();
+        const furthestDistanceMeters = -furthestDistance / 1000; // Convert mm to meters, negative Z
+        
+        // Create line from user (origin) to furthest screen center using Line2 for thick lines
+        const lineGeometry = new LineGeometry();
+        lineGeometry.setPositions([
+            0, 0, -0.05,                           // User position
+            0, 0, furthestDistanceMeters       // Furthest screen center
+        ]);
+        
+        // Theme-aware color: white on dark theme, black on light theme
+        const lineColor = this.getEffectiveTheme() === 'dark' ? 0xffffff : 0x000000;
+        
+        const lineMaterial = new LineMaterial({
+            color: lineColor,
+            linewidth: 5,        // Width in pixels
+            transparent: true,
+            opacity: 0.7,
+            dashed: true,
+            dashSize: 0.05,       // 100mm dashes
+            gapSize: 0.025,       // 50mm gaps
+            depthTest: false,    // Render on top of other objects for better visibility
+            resolution: new THREE.Vector2(window.innerWidth, window.innerHeight)
+        });
+        
+        this.viewAxisLine = new Line2(lineGeometry, lineMaterial);
+        this.viewAxisLine.computeLineDistances(); // Required for dashed lines
+        this.viewAxisLine.renderOrder = 999; // Render last to appear on top
+        
+        this.scene.add(this.viewAxisLine);
+    }
+    
     clearScreens() {
         // Remove all existing screen meshes from scene
         this.screenMeshes.forEach(meshGroup => {
@@ -195,8 +247,8 @@ class ScreenVisualizer3D {
                 this.scene.remove(meshGroup.border);
                 // Dispose all children in the border group
                 meshGroup.border.children.forEach(child => {
-                    child.geometry.dispose();
-                    child.material.dispose();
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) child.material.dispose();
                 });
             }
             
@@ -206,14 +258,28 @@ class ScreenVisualizer3D {
                 if (meshGroup.centerPanel.children && meshGroup.centerPanel.children.length > 0) {
                     // It's a group (curved screen) - dispose all children
                     meshGroup.centerPanel.children.forEach(child => {
-                        child.geometry.dispose();
-                        child.material.dispose();
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) child.material.dispose();
                     });
                 } else {
                     // It's a single mesh (flat screen) - dispose directly
-                    meshGroup.centerPanel.geometry.dispose();
-                    meshGroup.centerPanel.material.dispose();
+                    if (meshGroup.centerPanel.geometry) meshGroup.centerPanel.geometry.dispose();
+                    if (meshGroup.centerPanel.material) meshGroup.centerPanel.material.dispose();
                 }
+            }
+            
+            // Remove radius center marker (for curved screens)
+            if (meshGroup.radiusCenterMarker) {
+                this.scene.remove(meshGroup.radiusCenterMarker);
+                if (meshGroup.radiusCenterMarker.geometry) meshGroup.radiusCenterMarker.geometry.dispose();
+                if (meshGroup.radiusCenterMarker.material) meshGroup.radiusCenterMarker.material.dispose();
+            }
+            
+            // Remove radius line (for curved screens)
+            if (meshGroup.radiusLine) {
+                this.scene.remove(meshGroup.radiusLine);
+                if (meshGroup.radiusLine.geometry) meshGroup.radiusLine.geometry.dispose();
+                if (meshGroup.radiusLine.material) meshGroup.radiusLine.material.dispose();
             }
         });
         this.screenMeshes = [];
@@ -282,8 +348,8 @@ class ScreenVisualizer3D {
     
     createScreenBorder(screenWidth, screenHeight, screenColor, curvature = null) {
         // Create thick border frame
-        const borderThickness = 0.005; // 5mm thick border
-        const borderDepth = 0.003;     // 3mm depth
+        const borderThickness = screenHeight * 0.01; // 5% of width
+        const borderDepth = borderThickness * 0.5; // Half thickness in depth
         
         const borderGroup = new THREE.Group();
         
@@ -328,8 +394,7 @@ class ScreenVisualizer3D {
             
             // Coordinate system:
             // Arc formula: x = R*sin(angle), z = R*(1-cos(angle)) for angle ∈ [-arcAngle/2, +arcAngle/2]
-            // Center of arc at (0, y, 0), edges curve toward positive Z
-            // This is a circle centered at (0, y, R) with radius R
+            // Center of arc at (0, y, R) with radius R
             //
             // CylinderGeometry at origin: surface at θ is (R*cos(θ), y, R*sin(θ))
             // Positioned at (0, 0, R): surface becomes (R*cos(θ), y, R + R*sin(θ))
@@ -341,21 +406,107 @@ class ScreenVisualizer3D {
             // Use same thetaStart as center panel for alignment
             const thetaStart = Math.PI - arcAngle / 2;
             
-            // Top border - thin curved strip
-            const topGeometry = new THREE.CylinderGeometry(
-                radiusMeters, radiusMeters, borderThickness, segments, 1, true, thetaStart, arcAngle
-            );
-            const topBorder = new THREE.Mesh(topGeometry, borderMaterial);
-            topBorder.position.set(0, (screenHeight + borderThickness) / 2, radiusMeters);
-            borderGroup.add(topBorder);
+            // Inner and outer radii for box section borders
+            const innerRadius = radiusMeters;
+            const outerRadius = radiusMeters + borderDepth;
             
-            // Bottom border - thin curved strip
-            const bottomGeometry = new THREE.CylinderGeometry(
-                radiusMeters, radiusMeters, borderThickness, segments, 1, true, thetaStart, arcAngle
+            // Helper function to create curved cap geometry (top/bottom enclosing surface)
+            const createCurvedCap = (innerR, outerR, segs, tStart, tLength) => {
+                const vertices = [];
+                const indices = [];
+                
+                for (let i = 0; i <= segs; i++) {
+                    const theta = tStart + (i / segs) * tLength;
+                    
+                    // Inner vertex (y = 0, will be positioned later)
+                    vertices.push(innerR * Math.cos(theta), 0, innerR * Math.sin(theta));
+                    // Outer vertex
+                    vertices.push(outerR * Math.cos(theta), 0, outerR * Math.sin(theta));
+                }
+                
+                // Create triangles connecting inner and outer vertices
+                for (let i = 0; i < segs; i++) {
+                    const baseIndex = i * 2;
+                    // Two triangles per segment
+                    indices.push(baseIndex, baseIndex + 1, baseIndex + 3);
+                    indices.push(baseIndex, baseIndex + 3, baseIndex + 2);
+                }
+                
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                geometry.setIndex(indices);
+                geometry.computeVertexNormals();
+                
+                return geometry;
+            };
+            
+            // Top border - box section with inner/outer cylinder faces and top/bottom caps
+            const topBorderGroup = new THREE.Group();
+            
+            // Inner curved surface
+            const topInnerGeometry = new THREE.CylinderGeometry(
+                innerRadius, innerRadius, borderThickness, segments, 1, true, thetaStart, arcAngle
             );
-            const bottomBorder = new THREE.Mesh(bottomGeometry, borderMaterial);
-            bottomBorder.position.set(0, -(screenHeight + borderThickness) / 2, radiusMeters);
-            borderGroup.add(bottomBorder);
+            const topInnerMesh = new THREE.Mesh(topInnerGeometry, borderMaterial);
+            topBorderGroup.add(topInnerMesh);
+            
+            // Outer curved surface
+            const topOuterGeometry = new THREE.CylinderGeometry(
+                outerRadius, outerRadius, borderThickness, segments, 1, true, thetaStart, arcAngle
+            );
+            const topOuterMesh = new THREE.Mesh(topOuterGeometry, borderMaterial);
+            topBorderGroup.add(topOuterMesh);
+            
+            // Top enclosing cap (at y = borderThickness/2)
+            const topCapGeometry = createCurvedCap(innerRadius, outerRadius, segments, thetaStart, arcAngle);
+            const topCapMesh = new THREE.Mesh(topCapGeometry, borderMaterial);
+            topCapMesh.rotation.y = -Math.PI / 2;
+            topCapMesh.position.y = borderThickness / 2;
+            topBorderGroup.add(topCapMesh);
+            
+            // Bottom enclosing cap (at y = -borderThickness/2)
+            const topBottomCapGeometry = createCurvedCap(innerRadius, outerRadius, segments, thetaStart, arcAngle);
+            const topBottomCapMesh = new THREE.Mesh(topBottomCapGeometry, borderMaterial);
+            topBottomCapMesh.rotation.y = -Math.PI / 2;
+            topBottomCapMesh.position.y = -borderThickness / 2;
+            topBorderGroup.add(topBottomCapMesh);
+            
+            topBorderGroup.position.set(0, (screenHeight + borderThickness) / 2, radiusMeters);
+            borderGroup.add(topBorderGroup);
+            
+            // Bottom border - box section with inner/outer cylinder faces and top/bottom caps
+            const bottomBorderGroup = new THREE.Group();
+            
+            // Inner curved surface
+            const bottomInnerGeometry = new THREE.CylinderGeometry(
+                innerRadius, innerRadius, borderThickness, segments, 1, true, thetaStart, arcAngle
+            );
+            const bottomInnerMesh = new THREE.Mesh(bottomInnerGeometry, borderMaterial);
+            bottomBorderGroup.add(bottomInnerMesh);
+            
+            // Outer curved surface
+            const bottomOuterGeometry = new THREE.CylinderGeometry(
+                outerRadius, outerRadius, borderThickness, segments, 1, true, thetaStart, arcAngle
+            );
+            const bottomOuterMesh = new THREE.Mesh(bottomOuterGeometry, borderMaterial);
+            bottomBorderGroup.add(bottomOuterMesh);
+            
+            // Top enclosing cap
+            const bottomTopCapGeometry = createCurvedCap(innerRadius, outerRadius, segments, thetaStart, arcAngle);
+            const bottomTopCapMesh = new THREE.Mesh(bottomTopCapGeometry, borderMaterial);
+            bottomTopCapMesh.rotation.y = -Math.PI / 2;
+            bottomTopCapMesh.position.y = borderThickness / 2;
+            bottomBorderGroup.add(bottomTopCapMesh);
+            
+            // Bottom enclosing cap
+            const bottomCapGeometry = createCurvedCap(innerRadius, outerRadius, segments, thetaStart, arcAngle);
+            const bottomCapMesh = new THREE.Mesh(bottomCapGeometry, borderMaterial);
+            bottomCapMesh.rotation.y = -Math.PI / 2;
+            bottomCapMesh.position.y = -borderThickness / 2;
+            bottomBorderGroup.add(bottomCapMesh);
+            
+            bottomBorderGroup.position.set(0, -(screenHeight + borderThickness) / 2, radiusMeters);
+            borderGroup.add(bottomBorderGroup);
             
             // Left and right borders at arc endpoints
             // At θ = -PI/2 - arcAngle/2 (left): x = R*sin(-arcAngle/2) = -R*sin(arcAngle/2)
@@ -364,7 +515,7 @@ class ScreenVisualizer3D {
             //                                    z = R*(1 - cos(arcAngle/2))
             
             const leftX = -radiusMeters * Math.sin(arcAngle / 2);
-            const leftZ = radiusMeters * (1 - Math.cos(arcAngle / 2));
+            const leftZ = radiusMeters * (1 - Math.cos(arcAngle / 2)) - borderDepth / 2;
             const rightX = radiusMeters * Math.sin(arcAngle / 2);
             const rightZ = leftZ;
             
@@ -447,6 +598,53 @@ class ScreenVisualizer3D {
         }
     }
     
+    /**
+     * Create visualization elements for the center of radius of a curved screen
+     * @param {number} curvature - Curvature radius in mm
+     * @param {number} screenZ - Z position of the screen in meters
+     * @param {THREE.Color} screenColor - Color of the screen
+     * @returns {Object} Object containing marker sphere and line
+     */
+    createRadiusCenterVisualization(curvature, screenZ, screenColor) {
+        const radiusMeters = curvature / 1000; // Convert mm to meters
+        
+        // The center of radius is at (0, 0, screenZ + radiusMeters)
+        // Since the curved screen surface is at screenZ and curves toward positive Z,
+        // the center of the circle is radiusMeters behind the screen center point
+        const centerZ = screenZ + radiusMeters;
+        
+        // Create a larger, highly visible sphere to mark the center of radius
+        const markerRadius = 0.04; // 40mm radius sphere (80mm diameter) - much larger
+        const markerGeometry = new THREE.SphereGeometry(markerRadius, 32, 24);
+        const markerMaterial = new THREE.MeshLambertMaterial({
+            color: screenColor.clone().multiplyScalar(1.2), // Brighter than screen color
+            transparent: false,
+            emissive: screenColor.clone().multiplyScalar(0.3), // Add glow effect
+            emissiveIntensity: 0.5
+        });
+        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+        marker.position.set(0, 0, centerZ);
+        
+        // Create a solid, visible line from screen center to radius center
+        const linePoints = [
+            new THREE.Vector3(0, 0, screenZ),      // Screen center
+            new THREE.Vector3(0, 0, centerZ)       // Radius center
+        ];
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints(linePoints);
+        const lineMaterial = new THREE.LineDashedMaterial({
+            color: screenColor.clone().multiplyScalar(0.8),
+            transparent: true,
+            opacity: 0.8,
+            dashSize: 0.03,  // 30mm dashes
+            gapSize: 0.015,  // 15mm gaps
+            linewidth: 2     // Thicker line (note: may not work on all platforms)
+        });
+        const line = new THREE.Line(lineGeometry, lineMaterial);
+        line.computeLineDistances(); // Required for dashed lines
+        
+        return { marker, line };
+    }
+    
     createUserSphere() {
         // Remove existing sphere if it exists
         if (this.userSphere) {
@@ -455,14 +653,14 @@ class ScreenVisualizer3D {
             this.userSphere.material.dispose();
         }
         
-        // Create sphere with 20cm diameter (0.2m) at user position (origin)
-        const sphereGeometry = new THREE.SphereGeometry(0.1, 32, 16); // radius = 0.1m (diameter = 0.2m = 20cm)
+        // Create sphere with 10cm diameter (0.1m) at user position (origin)
+        const sphereGeometry = new THREE.SphereGeometry(0.05, 32, 16); // radius = 0.05m (diameter = 0.1m = 10cm)
         
-        // Create solid blue material with shading
+        // Create opaque blue material with shading
         const sphereMaterial = new THREE.MeshLambertMaterial({ 
             color: 0x87CEEB, // Sky blue color (lighter blue)
-            transparent: true,
-            opacity: 0 // Start invisible for animation
+            transparent: false,
+            opacity: 1 // Fully opaque
         });
         
         this.userSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
@@ -625,10 +823,10 @@ class ScreenVisualizer3D {
         return false;
     }
     
-    // Handle responsive camera updates with delay (only in 3D view)
+    // Handle responsive camera updates with delay (only in 3D or top view)
     updateCameraPositionResponsive() {
-        // Only respond to distance changes in 3D view
-        if (this.viewAngle !== '3d' || !this.isInitialized) return;
+        // Only respond to distance changes in 3D or top view
+        if (this.viewAngle === 'front' || !this.isInitialized) return;
         
         // Clear any existing timeout
         if (this.responseTimeoutId) {
@@ -645,36 +843,143 @@ class ScreenVisualizer3D {
     animateCamera() {
         if (!this.isAnimating || !this.camera) return;
         
-        // Interpolate camera position
-        this.camera.position.lerp(this.targetCameraPosition, this.animationSpeed);
-        
-        // For lookAt, we need to interpolate the direction and then apply it
-        const currentLookDirection = new THREE.Vector3();
-        this.camera.getWorldDirection(currentLookDirection);
-        
-        const targetLookDirection = new THREE.Vector3();
-        targetLookDirection.copy(this.targetCameraLookAt).sub(this.camera.position).normalize();
-        
-        // Slerp (spherical linear interpolation) for smooth rotation
-        currentLookDirection.lerp(targetLookDirection, this.animationSpeed);
-        
-        // Apply the interpolated look direction
-        const lookAtPoint = new THREE.Vector3();
-        lookAtPoint.copy(this.camera.position).add(currentLookDirection);
-        this.camera.lookAt(lookAtPoint);
-        
-        // Check if we're close enough to the target to stop animating
-        const positionDistance = this.camera.position.distanceTo(this.targetCameraPosition);
-        const directionDistance = currentLookDirection.distanceTo(targetLookDirection);
-        
-        if (positionDistance < 0.001 && directionDistance < 0.001) {
-            // Animation complete - snap to final position
-            this.camera.position.copy(this.targetCameraPosition);
-            this.camera.lookAt(this.targetCameraLookAt);
-            this.isAnimating = false;
+        // For top-down view, we need special handling because lookAt straight down
+        // causes issues with the up vector
+        if (this.viewAngle === 'top') {
+            // Clear spherical helpers if they exist (switching from 3D view)
+            if (this._currentSpherical) {
+                this._currentSpherical = null;
+            }
+            if (this._currentOrbitTarget) {
+                this._currentOrbitTarget = null;
+            }
             
-            // Update orbit state spherical coordinates to match final camera position in 3D view
-            if (this.viewAngle === '3d') {
+            // Interpolate camera position
+            this.camera.position.lerp(this.targetCameraPosition, this.animationSpeed);
+            
+            // Initialize the look-at point helper if needed
+            if (!this._currentLookAt) {
+                // Initialize from current camera state - calculate what point the camera is looking at
+                // Use a point at a reasonable distance in front of the camera
+                const currentDirection = new THREE.Vector3();
+                this.camera.getWorldDirection(currentDirection);
+                this._currentLookAt = new THREE.Vector3();
+                this._currentLookAt.copy(this.camera.position).add(currentDirection.multiplyScalar(1));
+            }
+            
+            // Smoothly interpolate the look-at point
+            this._currentLookAt.lerp(this.targetCameraLookAt, this.animationSpeed);
+            
+            // Smoothly interpolate the up vector for top view
+            if (!this._currentUp) {
+                this._currentUp = new THREE.Vector3().copy(this.camera.up);
+            }
+            const targetUp = new THREE.Vector3(0, 0, -1); // Target up vector for top-down view
+            this._currentUp.lerp(targetUp, this.animationSpeed);
+            this.camera.up.copy(this._currentUp);
+            
+            // Set camera to look at the interpolated point
+            this.camera.lookAt(this._currentLookAt);
+            
+            // Check if we're close enough to the target to stop animating
+            const positionDistance = this.camera.position.distanceTo(this.targetCameraPosition);
+            const lookAtDistance = this._currentLookAt.distanceTo(this.targetCameraLookAt);
+            const upDistance = this._currentUp.distanceTo(targetUp);
+            
+            if (positionDistance < 0.001 && lookAtDistance < 0.001 && upDistance < 0.001) {
+                // Animation complete - snap to final position
+                this.camera.position.copy(this.targetCameraPosition);
+                this.camera.up.set(0, 0, -1);
+                this.camera.lookAt(this.targetCameraLookAt);
+                this.isAnimating = false;
+                this._currentLookAt = null;
+                this._currentUp = null;
+            }
+        } else if (this.viewAngle === '3d') {
+            // For 3D view, use spherical coordinate interpolation for proper rotation around target
+            // This ensures the camera orbits around the target point during transitions
+            
+            // Clear the lookAt helper if it exists (switching from top view)
+            if (this._currentLookAt) {
+                this._currentLookAt = null;
+            }
+            
+            // Smoothly interpolate the up vector back to Y-up
+            if (!this._currentUp) {
+                this._currentUp = new THREE.Vector3().copy(this.camera.up);
+            }
+            const targetUp = new THREE.Vector3(0, 1, 0); // Standard up vector
+            this._currentUp.lerp(targetUp, this.animationSpeed);
+            this.camera.up.copy(this._currentUp);
+            
+            // Smoothly interpolate the orbit target (rotation center)
+            // _currentOrbitTarget should be pre-initialized in setViewAngle with the PREVIOUS target
+            if (!this._currentOrbitTarget) {
+                // Fallback: if not pre-initialized, start from current target (no transition)
+                this._currentOrbitTarget = new THREE.Vector3().copy(this.orbitState.target);
+            }
+            this._currentOrbitTarget.lerp(this.orbitState.target, this.animationSpeed);
+            
+            // _currentSpherical should be pre-initialized in setViewAngle with PREVIOUS camera state
+            if (!this._currentSpherical) {
+                // Fallback: calculate from current position relative to current target
+                const offset = new THREE.Vector3();
+                offset.copy(this.camera.position).sub(this._currentOrbitTarget);
+                
+                const radius = offset.length();
+                if (radius > 0) {
+                    const phi = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
+                    const theta = Math.atan2(offset.x, offset.z);
+                    this._currentSpherical = new THREE.Spherical(radius, phi, theta);
+                } else {
+                    this._currentSpherical = new THREE.Spherical(1, Math.PI / 4, Math.PI / 4);
+                }
+            }
+            
+            // Interpolate spherical coordinates
+            this._currentSpherical.radius = THREE.MathUtils.lerp(
+                this._currentSpherical.radius, 
+                this.orbitState.spherical.radius, 
+                this.animationSpeed
+            );
+            this._currentSpherical.phi = THREE.MathUtils.lerp(
+                this._currentSpherical.phi, 
+                this.orbitState.spherical.phi, 
+                this.animationSpeed
+            );
+            // For theta, handle wrapping around PI/-PI
+            let targetTheta = this.orbitState.spherical.theta;
+            let currentTheta = this._currentSpherical.theta;
+            // Find shortest path for theta interpolation
+            let deltaTheta = targetTheta - currentTheta;
+            if (deltaTheta > Math.PI) deltaTheta -= 2 * Math.PI;
+            if (deltaTheta < -Math.PI) deltaTheta += 2 * Math.PI;
+            this._currentSpherical.theta = currentTheta + deltaTheta * this.animationSpeed;
+            
+            // Calculate camera position from interpolated spherical coordinates and target
+            const position = new THREE.Vector3();
+            position.setFromSpherical(this._currentSpherical);
+            position.add(this._currentOrbitTarget);
+            
+            this.camera.position.copy(position);
+            this.camera.lookAt(this._currentOrbitTarget);
+            
+            // Check if we're close enough to stop animating
+            const positionDistance = this.camera.position.distanceTo(this.targetCameraPosition);
+            const targetDistance = this._currentOrbitTarget.distanceTo(this.orbitState.target);
+            const upDistance = this._currentUp.distanceTo(targetUp);
+            
+            if (positionDistance < 0.001 && targetDistance < 0.001 && upDistance < 0.001) {
+                // Animation complete - snap to final position
+                this.camera.position.copy(this.targetCameraPosition);
+                this.camera.up.set(0, 1, 0);
+                this.camera.lookAt(this.orbitState.target);
+                this.isAnimating = false;
+                this._currentUp = null;
+                this._currentSpherical = null;
+                this._currentOrbitTarget = null;
+                
+                // Update orbit state spherical coordinates to match final camera position
                 const offset = new THREE.Vector3();
                 offset.copy(this.camera.position).sub(this.orbitState.target);
                 
@@ -683,6 +988,58 @@ class ScreenVisualizer3D {
                 const theta = Math.atan2(offset.x, offset.z);
                 
                 this.orbitState.spherical.set(radius, phi, theta);
+            }
+        } else {
+            // For front view, smoothly interpolate position and look direction
+            
+            // Clear all helpers from other views
+            if (this._currentSpherical) {
+                this._currentSpherical = null;
+            }
+            if (this._currentOrbitTarget) {
+                this._currentOrbitTarget = null;
+            }
+            if (this._currentLookAt) {
+                this._currentLookAt = null;
+            }
+            
+            // Interpolate camera position
+            this.camera.position.lerp(this.targetCameraPosition, this.animationSpeed);
+            
+            if (!this._currentUp) {
+                this._currentUp = new THREE.Vector3().copy(this.camera.up);
+            }
+            const targetUp = new THREE.Vector3(0, 1, 0); // Standard up vector
+            this._currentUp.lerp(targetUp, this.animationSpeed);
+            this.camera.up.copy(this._currentUp);
+            
+            // For lookAt, we need to interpolate the direction and then apply it
+            const currentLookDirection = new THREE.Vector3();
+            this.camera.getWorldDirection(currentLookDirection);
+            
+            const targetLookDirection = new THREE.Vector3();
+            targetLookDirection.copy(this.targetCameraLookAt).sub(this.camera.position).normalize();
+            
+            // Lerp for smooth rotation
+            currentLookDirection.lerp(targetLookDirection, this.animationSpeed);
+            
+            // Apply the interpolated look direction
+            const lookAtPoint = new THREE.Vector3();
+            lookAtPoint.copy(this.camera.position).add(currentLookDirection);
+            this.camera.lookAt(lookAtPoint);
+            
+            // Check if we're close enough to stop animating
+            const positionDistance = this.camera.position.distanceTo(this.targetCameraPosition);
+            const directionDistance = currentLookDirection.distanceTo(targetLookDirection);
+            const upDistance = this._currentUp.distanceTo(targetUp);
+            
+            if (positionDistance < 0.001 && directionDistance < 0.001 && upDistance < 0.001) {
+                // Animation complete - snap to final position
+                this.camera.position.copy(this.targetCameraPosition);
+                this.camera.up.set(0, 1, 0);
+                this.camera.lookAt(this.targetCameraLookAt);
+                this.isAnimating = false;
+                this._currentUp = null;
             }
         }
     }
@@ -718,17 +1075,18 @@ class ScreenVisualizer3D {
         if (!this.userSphere) return;
         
         // Determine if sphere should be visible based on view angle
+        // Sphere is visible in 3D and top views, hidden in front view
         const shouldBeVisible = (this.viewAngle !== 'front');
         
         // Only start animation if visibility state actually changed
         if (this.sphereVisible !== shouldBeVisible) {
             this.sphereVisible = shouldBeVisible;
-            this.targetSphereOpacity = shouldBeVisible ? 1.0 : 0;
+            this.targetSphereOpacity = shouldBeVisible ? 1 : 0; // Fully opaque when visible, fully transparent when hidden
             this.sphereAnimating = true;
         }
         
-        // Update manual orbit controls enabled state
-        this.orbitState.enabled = (this.viewAngle !== 'front');
+        // Update manual orbit controls enabled state (only in 3D view)
+        this.orbitState.enabled = (this.viewAngle === '3d');
         
         // Update cursor based on controls state
         if (this.renderer && this.renderer.domElement) {
@@ -743,6 +1101,22 @@ class ScreenVisualizer3D {
             // Front view - camera at origin (same position as user sphere)
             this.targetCameraPosition.set(0, 0, 0);
             this.targetCameraLookAt.set(0, 0, -1); // Look towards negative Z direction
+        } else if (this.viewAngle === 'top') {
+            // Top-down view - camera above looking straight down
+            const furthestDistance = this.calculateFurthestScreenDistance();
+            const furthestDistanceMeters = furthestDistance / 1000; // Convert mm to meters
+            
+            // Position camera above the midpoint between user and furthest screen
+            const midpointZ = -furthestDistanceMeters / 2; // Midpoint in negative Z
+            const cameraHeight = Math.max(0.8, furthestDistanceMeters * 1.2); // Height above scene
+            
+            this.targetCameraPosition.set(0, cameraHeight, midpointZ);
+            
+            // Look straight down at the midpoint
+            this.targetCameraLookAt.set(0, 0, midpointZ);
+            
+            // Update orbit target for consistency (though orbit is disabled in top view)
+            this.orbitState.target.set(0, 0, midpointZ);
         } else {
             // 3D isometric view - camera at an angle to see both sphere and screens
             // Calculate camera position based on furthest screen distance
@@ -751,21 +1125,20 @@ class ScreenVisualizer3D {
             
             // Position camera at a distance that provides good viewing angle for all screens
             // Use the furthest screen distance as reference for camera positioning
-            const cameraDistance = Math.max(0.5, furthestDistanceMeters * 0.8); // At least 0.5m, or 80% of furthest screen
-            const cameraHeight = cameraDistance * 0.6; // Height proportional to distance
-            const cameraSide = cameraDistance * 0.8;    // Side position proportional to distance
+            const cameraDistance = Math.max(0.1, furthestDistanceMeters * 0.2); // At least 0.3m, or 50% of furthest screen
+            const cameraHeight = cameraDistance * 2; // Height proportional to distance
+            const cameraSide = cameraDistance * 3;    // Side position proportional to distance
             
             this.targetCameraPosition.set(cameraSide, cameraHeight, cameraDistance);
             
-            // Set rotation center to the nearest screen position
-            const nearestDistance = this.calculateNearestScreenDistance();
-            const nearestDistanceMeters = -nearestDistance / 1000; // Convert mm to meters, negative Z
-            const rotationCenter = new THREE.Vector3(0, 0, nearestDistanceMeters);
+            // Set rotation center to the midpoint from user to furthest screen
+            const midpointZ = -furthestDistanceMeters / 2; // Midpoint between user (0,0,0) and furthest screen
+            const rotationCenter = new THREE.Vector3(0, 0, midpointZ);
             
-            // Look towards the nearest screen (rotation center)
+            // Look towards the midpoint (rotation center)
             this.targetCameraLookAt.copy(rotationCenter);
             
-            // Update manual orbit controls target to nearest screen
+            // Update manual orbit controls target to midpoint
             this.orbitState.target.copy(rotationCenter);
             
             // Calculate spherical coordinates from target camera position
@@ -871,6 +1244,11 @@ class ScreenVisualizer3D {
         // Update canvas size and camera/renderer
         this.updateCanvasSize();
         
+        // Update LineMaterial resolution for proper line width rendering
+        if (this.viewAxisLine && this.viewAxisLine.material) {
+            this.viewAxisLine.material.resolution.set(this.canvas.width, this.canvas.height);
+        }
+        
         // Reset screen cache to trigger re-render if needed
         this.lastScreensHash = null;
     }
@@ -880,40 +1258,99 @@ class ScreenVisualizer3D {
      * @returns {string} The effective theme
      */
     getEffectiveTheme() {
-        const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'system' || !savedTheme) {
-            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        // Method 1: Check data-theme attribute on html (this is what ThemeManager sets)
+        const htmlTheme = document.documentElement.getAttribute('data-theme');
+        if (htmlTheme === 'dark' || htmlTheme === 'light') {
+            return htmlTheme;
         }
-        return savedTheme;
-    }
-
-    /**
-     * Get theme-specific colors
-     * @returns {Object} Color configuration for current theme
-     */
-    getThemeColors() {
-        const theme = this.getEffectiveTheme();
-        return theme === 'dark' ? CONFIG.COLORS.DARK : CONFIG.COLORS.LIGHT;
+        
+        // Method 2: Check localStorage
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark' || savedTheme === 'light') {
+            return savedTheme;
+        }
+        
+        // Method 3: Check for theme class on html
+        if (document.documentElement.classList.contains('theme-dark')) {
+            return 'dark';
+        }
+        if (document.documentElement.classList.contains('theme-light')) {
+            return 'light';
+        }
+        
+        // Method 4: Check for dark class on html or body
+        if (document.documentElement.classList.contains('dark') || 
+            document.body?.classList.contains('dark')) {
+            return 'dark';
+        }
+        
+        // Method 5: Fall back to system preference
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
 
     /**
      * Set up theme change listener
      */
     setupThemeListener() {
-        // Listen for theme toggle events
+        // Listen for theme toggle events (custom event)
         document.addEventListener('themeChanged', () => {
             this.currentTheme = this.getEffectiveTheme();
-            this.render(); // Update screen colors
+            this.updateViewAxisLineColor();
+            this.render();
         });
 
         // Listen for system theme changes
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-            const savedTheme = localStorage.getItem('theme');
-            if (savedTheme === 'system' || !savedTheme) {
-                this.currentTheme = this.getEffectiveTheme();
-                this.render(); // Update screen colors
+            this.currentTheme = this.getEffectiveTheme();
+            this.updateViewAxisLineColor();
+            this.render();
+        });
+        
+        // Listen for DOM attribute changes (for data-theme attribute changes)
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'attributes' && 
+                    (mutation.attributeName === 'data-theme' || mutation.attributeName === 'class')) {
+                    const newTheme = this.getEffectiveTheme();
+                    if (newTheme !== this.currentTheme) {
+                        this.currentTheme = newTheme;
+                        this.updateViewAxisLineColor();
+                        this.render();
+                    }
+                    break;
+                }
             }
         });
+        
+        // Observe both html and body for theme changes
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
+        if (document.body) {
+            observer.observe(document.body, { attributes: true, attributeFilter: ['data-theme', 'class'] });
+        }
+        
+        // Store observer for cleanup
+        this.themeObserver = observer;
+    }
+
+    /**
+     * Update the view axis line color based on current theme
+     */
+    updateViewAxisLineColor() {
+        if (!this.viewAxisLine || !this.viewAxisLine.material) return;
+        
+        const isDark = this.getEffectiveTheme() === 'dark';
+        const lineColor = isDark ? 0xffffff : 0x000000;
+        
+        // LineMaterial requires setting color via the color property
+        this.viewAxisLine.material.color.set(lineColor);
+        
+        // Force material update - LineMaterial may cache uniforms
+        this.viewAxisLine.material.needsUpdate = true;
+        
+        // Also update the material's uniforms directly if they exist
+        if (this.viewAxisLine.material.uniforms && this.viewAxisLine.material.uniforms.diffuse) {
+            this.viewAxisLine.material.uniforms.diffuse.value.set(lineColor);
+        }
     }
 
     /**
@@ -974,11 +1411,13 @@ class ScreenVisualizer3D {
         // Only render if screen data has actually changed and visualizer is initialized
         if (this.isInitialized && this.hasScreenDataChanged(this.screens)) {
             this.createScreens(); // Recreate all screens with new data
+            this.updateViewAxisLine(); // Update view axis line when screens change
         }
         
         // If only distances changed (and we're in 3D view), update camera position responsively
         if (this.isInitialized && distanceChanged) {
             this.updateCameraPositionResponsive();
+            this.updateViewAxisLine(); // Also update view axis when distance changes
         }
     }
 
@@ -989,32 +1428,112 @@ class ScreenVisualizer3D {
         }
     }
 
+    /**
+     * Update the angle toggle UI to reflect the current view state
+     * @param {string} viewAngle - The view angle ('front', 'top', or '3d')
+     */
+    updateAngleToggleUI(viewAngle) {
+        const angleToggle = document.querySelector('.angle-toggle');
+        if (angleToggle) {
+            // Remove all selection classes first
+            angleToggle.classList.remove('top-selected', 'isometric-selected');
+            
+            // Add the appropriate class based on selection
+            if (viewAngle === 'top') {
+                angleToggle.classList.add('top-selected');
+            } else if (viewAngle === '3d') {
+                angleToggle.classList.add('isometric-selected');
+            }
+            // 'front' is the default state, no class needed
+        }
+    }
+
     setViewAngle(angle) {
         if (this.viewAngle !== angle) {
+            const previousAngle = this.viewAngle;
             this.viewAngle = angle;
+            
+            // Update toggle UI to match view state
+            this.updateAngleToggleUI(angle);
+            
             if (this.isInitialized) {
+                // Capture current camera state BEFORE updateCameraPosition changes targets
+                const previousCameraPosition = this.camera.position.clone();
+                const previousUp = this.camera.up.clone();
+                
+                // Calculate where camera was looking (for transition)
+                const previousLookDirection = new THREE.Vector3();
+                this.camera.getWorldDirection(previousLookDirection);
+                
+                // Store the previous orbit target for smooth transition
+                const previousOrbitTarget = this.orbitState.target.clone();
+                
                 this.updateCameraPosition();
                 
-                // When switching to 3D view, ensure orbit state is properly initialized
-                // to prevent snapping back to old position
+                // Pre-initialize animation helpers with PREVIOUS state for smooth transitions
                 if (angle === '3d') {
-                    // Use current camera position to initialize orbit state if animation is in progress
+                    // Initialize _currentOrbitTarget with the PREVIOUS target (or calculate from previous look direction)
+                    if (previousAngle === 'top') {
+                        // From top view, use the previous lookAt point (midpoint)
+                        this._currentOrbitTarget = this.targetCameraLookAt.clone();
+                        // Actually for top view, the target was at the midpoint on the Z axis
+                        // Let's use where the camera was looking at based on previous state
+                        this._currentOrbitTarget = previousOrbitTarget.clone();
+                    } else {
+                        this._currentOrbitTarget = previousOrbitTarget.clone();
+                    }
+                    
+                    // Initialize _currentUp with previous up vector
+                    this._currentUp = previousUp.clone();
+                    
+                    // Calculate initial spherical coordinates from PREVIOUS camera position relative to PREVIOUS target
                     const offset = new THREE.Vector3();
-                    offset.copy(this.camera.position).sub(this.orbitState.target);
+                    offset.copy(previousCameraPosition).sub(this._currentOrbitTarget);
                     
                     const radius = offset.length();
-                    if (radius > 0) { // Avoid division by zero
+                    if (radius > 0) {
                         const phi = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
                         const theta = Math.atan2(offset.x, offset.z);
-                        this.orbitState.spherical.set(radius, phi, theta);
+                        this._currentSpherical = new THREE.Spherical(radius, phi, theta);
+                    } else {
+                        this._currentSpherical = new THREE.Spherical(1, Math.PI / 2, 0);
                     }
                 }
             }
         }
     }
 
+    /**
+     * Update the view axis line endpoint based on current furthest screen distance
+     */
+    updateViewAxisLine() {
+        if (!this.viewAxisLine || !this.isInitialized) return;
+        
+        // Calculate new furthest screen distance
+        const furthestDistance = this.calculateFurthestScreenDistance();
+        const furthestDistanceMeters = -furthestDistance / 1000; // Convert mm to meters, negative Z
+        
+        // Update line geometry with new endpoint
+        const lineGeometry = new LineGeometry();
+        lineGeometry.setPositions([
+            0, 0, -0.05,                           // User position
+            0, 0, furthestDistanceMeters       // Furthest screen center
+        ]);
+        
+        // Dispose old geometry and assign new one
+        this.viewAxisLine.geometry.dispose();
+        this.viewAxisLine.geometry = lineGeometry;
+        this.viewAxisLine.computeLineDistances(); // Required for dashed lines
+    }
+
     render() {
         if (!this.isInitialized) return;
+        
+        // Update view axis line color based on theme
+        if (this.viewAxisLine && this.viewAxisLine.material) {
+            const lineColor = this.getEffectiveTheme() === 'dark' ? 0xffffff : 0x000000;
+            this.viewAxisLine.material.color.set(lineColor);
+        }
         
         // Update colors for all screens based on current theme
         this.screenMeshes.forEach(meshGroup => {
@@ -1041,16 +1560,21 @@ class ScreenVisualizer3D {
                     meshGroup.centerPanel.material.color.copy(panelColor);
                 }
             }
+            
+            // Update radius center marker color (for curved screens)
+            if (meshGroup.radiusCenterMarker) {
+                meshGroup.radiusCenterMarker.material.color.copy(screenColor.clone().multiplyScalar(0.7));
+            }
+            
+            // Update radius line color (for curved screens)
+            if (meshGroup.radiusLine) {
+                meshGroup.radiusLine.material.color.copy(screenColor.clone().multiplyScalar(0.6));
+            }
         });
-        
-        // Note: User sphere maintains consistent blue color regardless of theme
     }
 
-    // Method for cleanup when destroying the visualizer
-    dispose() {
-        if (!this.isInitialized) return;
-        
-        // Clear any pending response timeout
+    destroy() {
+        // Clean up event listeners
         if (this.responseTimeoutId) {
             clearTimeout(this.responseTimeoutId);
             this.responseTimeoutId = null;
@@ -1073,10 +1597,6 @@ class ScreenVisualizer3D {
             this.orbitState.cleanup();
         }
         
-        if (this.renderer) {
-            this.renderer.dispose();
-        }
-        
         // Clean up all screens
         this.clearScreens();
         
@@ -1086,6 +1606,11 @@ class ScreenVisualizer3D {
             this.userSphere.geometry.dispose();
             this.userSphere.material.dispose();
             this.userSphere = null;
+        }
+        
+        // Clean up renderer
+        if (this.renderer) {
+            this.renderer.dispose();
         }
         
         this.isInitialized = false;

@@ -51,17 +51,6 @@ class ScreenManager {
         this.validator.setUnitManager(this.unitManager);
     }
     
-    updateAngleToggle(viewAngle) {
-        const angleToggle = document.querySelector('.angle-toggle');
-        if (angleToggle) {
-            if (viewAngle === '3d') {
-                angleToggle.classList.add('isometric-selected');
-            } else {
-                angleToggle.classList.remove('isometric-selected');
-            }
-        }
-    }
-    
     init() {
         // Setup URL state change listener first
         this.urlManager.onStateChange((urlState) => {
@@ -114,14 +103,10 @@ class ScreenManager {
         document.querySelectorAll('input[name="viewAngle"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
                 this.visualizer.setViewAngle(e.target.value);
-                this.updateAngleToggle(e.target.value);
                 this.autoSave(); // Save UI state changes
                 this.updateURL(); // Update URL with new view angle
             });
         });
-        
-        // Initialize angle toggle state
-        this.updateAngleToggle('front');
         
         // Restore UI state if available (URL state takes precedence)
         const stateToRestore = urlState || savedState;
