@@ -5,7 +5,7 @@ const CONFIG = {
     // Color Palette
     COLORS: {
         // Screen visualization colors
-        SCREEN_COLORS: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3', '#54A0FF'],
+        SCREEN_COLORS: ['#9b5de5', '#00f5d4', '#f15bb5', '#00bbf9', '#fee440'],
         
         // Transparency and label styling
         SCREEN_FILL_OPACITY: '15', // Used as hex suffix for screen fill colors
