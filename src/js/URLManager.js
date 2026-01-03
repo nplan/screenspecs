@@ -10,11 +10,9 @@ class URLManager {
         
         // URL state configuration
         this.config = {
-            VERSION: 1, // URL format version for future compatibility
             PARAM_NAMES: {
                 VERSION: 'v',
                 SCREENS: 's',
-                VIEW_MODE: 'vm',
                 SHARE_ID: 'id' // For future use with server-side sharing
             },
             COMPRESSION: {
@@ -26,10 +24,6 @@ class URLManager {
                     'curvature': 'c',
                     'scaling': 'sc',
                     'preset': 'p'
-                },
-                VIEW_MODE_MAPPING: {
-                    'realSize': 'r',
-                    'fovBased': 'f'
                 }
             },
             MAX_URL_LENGTH: 2000 // Browser URL length limit consideration
@@ -136,12 +130,6 @@ class URLManager {
             params.set(this.config.PARAM_NAMES.SCREENS, screensData.join('|'));
         }
         
-        // Encode view mode
-        if (state.uiState && state.uiState.viewMode) {
-            const viewMode = this.config.COMPRESSION.VIEW_MODE_MAPPING[state.uiState.viewMode] || 'r';
-            params.set(this.config.PARAM_NAMES.VIEW_MODE, viewMode);
-        }
-        
         return params;
     }
 
@@ -171,15 +159,6 @@ class URLManager {
                 state.screens = screenStrings
                     .map(screenStr => this.decodeScreen(screenStr))
                     .filter(screen => screen !== null);
-            }
-            
-            // Decode view mode
-            const viewModeParam = params.get(this.config.PARAM_NAMES.VIEW_MODE);
-            if (viewModeParam) {
-                const viewModeMap = Object.fromEntries(
-                    Object.entries(this.config.COMPRESSION.VIEW_MODE_MAPPING).map(([k, v]) => [v, k])
-                );
-                state.uiState.viewMode = viewModeMap[viewModeParam] || 'realSize';
             }
             
             // Validate decoded state
@@ -417,8 +396,7 @@ class URLManager {
      */
     hasURLState() {
         const params = new URLSearchParams(window.location.search);
-        return params.has(this.config.PARAM_NAMES.SCREENS) || 
-               params.has(this.config.PARAM_NAMES.VIEW_MODE);
+        return params.has(this.config.PARAM_NAMES.SCREENS);
     }
 
     /**

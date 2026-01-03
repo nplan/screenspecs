@@ -1,7 +1,7 @@
 // Import dependencies
 import { CONFIG } from './config.js';
 import { Screen } from './Screen.js';
-import { ScreenVisualizer } from './ScreenVisualizer.js';
+import { ScreenVisualizer3D } from './ScreenVisualizer3D.js';
 import { ValidationManager } from './ValidationManager.js';
 import { StorageManager } from './StorageManager.js';
 import { URLManager } from './URLManager.js';
@@ -11,8 +11,14 @@ import { AmazonLinkManager } from './AmazonLinkManager.js';
 // Screen Manager - Centralized state and operations
 class ScreenManager {
     constructor() {
+        console.log('ScreenManager constructor called');
+        console.log('CONFIG.SELECTORS.CANVAS_ID:', CONFIG.SELECTORS.CANVAS_ID);
+        
         this.screens = [];
-        this.visualizer = new ScreenVisualizer(CONFIG.SELECTORS.CANVAS_ID);
+        console.log('Creating ScreenVisualizer3D...');
+        this.visualizer = new ScreenVisualizer3D(CONFIG.SELECTORS.CANVAS_ID);
+        console.log('ScreenVisualizer3D created');
+        
         this.validator = new ValidationManager();
         this.storage = new StorageManager();
         this.urlManager = new URLManager();
@@ -43,17 +49,6 @@ class ScreenManager {
         this.unitManager.setAccessibilityManager(accessibilityManager);
         // Set unit manager reference on validator for dynamic units
         this.validator.setUnitManager(this.unitManager);
-    }
-    
-    updatePillToggle(viewMode) {
-        const modeToggle = document.querySelector('.mode-toggle');
-        if (modeToggle) {
-            if (viewMode === 'fovBased') {
-                modeToggle.classList.add('fov-selected');
-            } else {
-                modeToggle.classList.remove('fov-selected');
-            }
-        }
     }
     
     init() {
@@ -104,18 +99,14 @@ class ScreenManager {
             }
         }
         
-        // Setup visualizer controls
-        document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
+        // Setup view angle controls
+        document.querySelectorAll('input[name="viewAngle"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
-                this.visualizer.setViewMode(e.target.value);
-                this.updatePillToggle(e.target.value);
+                this.visualizer.setViewAngle(e.target.value);
                 this.autoSave(); // Save UI state changes
-                this.updateURL(); // Update URL with new view mode
+                this.updateURL(); // Update URL with new view angle
             });
         });
-        
-        // Initialize pill toggle state
-        this.updatePillToggle('realSize');
         
         // Restore UI state if available (URL state takes precedence)
         const stateToRestore = urlState || savedState;
@@ -131,12 +122,12 @@ class ScreenManager {
         if (addButton) {
             addButton.addEventListener('click', () => {
                 if (this.screens.length < 4) {
-                    const nextPreset = this.getNextBiggerPreset();
+                    // Always add the same default preset (24" 1920x1080)
                     this.addScreen({
-                        preset: nextPreset.value,
-                        diagonal: nextPreset.diagonal,
-                        width: nextPreset.width,
-                        height: nextPreset.height,
+                        preset: '24-1920-1080',
+                        diagonal: CONFIG.DEFAULTS.PRESET_DIAGONAL,
+                        width: CONFIG.DEFAULTS.PRESET_RESOLUTION[0],
+                        height: CONFIG.DEFAULTS.PRESET_RESOLUTION[1],
                         distance: CONFIG.DEFAULTS.PRESET_DISTANCE,
                         curvature: CONFIG.DEFAULTS.PRESET_CURVATURE,
                         scaling: CONFIG.DEFAULTS.PRESET_SCALING
@@ -225,15 +216,30 @@ class ScreenManager {
         }
         this.usedNumbers.add(screenNumber);
         
+        // If a preset is specified, get preset data for defaults
+        let presetData = {};
+        if (data.preset) {
+            const preset = CONFIG.PRESET_UTILS ? CONFIG.PRESET_UTILS.getPresetByValue(data.preset) : null;
+            if (preset) {
+                presetData = {
+                    diagonal: preset.diagonal,
+                    width: preset.width,
+                    height: preset.height,
+                    distance: preset.distance || CONFIG.DEFAULTS.PRESET_DISTANCE,
+                    curvature: preset.curvature || CONFIG.DEFAULTS.PRESET_CURVATURE
+                };
+            }
+        }
+        
         const screenData = {
             id: screenId,
             screenNumber: screenNumber,
             preset: data.preset || '',
-            diagonal: data.diagonal || null,
-            width: data.width || null,
-            height: data.height || null,
-            distance: data.distance || CONFIG.DEFAULTS.PRESET_DISTANCE,
-            curvature: data.curvature || CONFIG.DEFAULTS.PRESET_CURVATURE,
+            diagonal: data.diagonal || presetData.diagonal || null,
+            width: data.width || presetData.width || null,
+            height: data.height || presetData.height || null,
+            distance: data.distance || presetData.distance || CONFIG.DEFAULTS.PRESET_DISTANCE,
+            curvature: data.curvature !== undefined ? data.curvature : (presetData.curvature !== undefined ? presetData.curvature : CONFIG.DEFAULTS.PRESET_CURVATURE),
             scaling: data.scaling || CONFIG.DEFAULTS.PRESET_SCALING
         };
         
@@ -442,16 +448,37 @@ class ScreenManager {
             inputs.preset.classList.remove('input-error');
             
             if (value) {
-                const [diag, w, h] = value.split('-');
-                this.updateScreen(screenId, 'preset', value);
-                this.updateScreen(screenId, 'diagonal', parseFloat(diag));
-                this.updateScreen(screenId, 'width', parseInt(w));
-                this.updateScreen(screenId, 'height', parseInt(h));
+                // Find the preset configuration
+                const preset = CONFIG.PRESET_UTILS ? CONFIG.PRESET_UTILS.getPresetByValue(value) : null;
                 
-                // Update DOM values
-                inputs.diagonal.value = diag;
-                inputs.width.value = w;
-                inputs.height.value = h;
+                if (preset) {
+                    // Update all preset values including distance and curvature
+                    this.updateScreen(screenId, 'preset', value);
+                    this.updateScreen(screenId, 'diagonal', preset.diagonal);
+                    this.updateScreen(screenId, 'width', preset.width);
+                    this.updateScreen(screenId, 'height', preset.height);
+                    this.updateScreen(screenId, 'distance', preset.distance || CONFIG.DEFAULTS.PRESET_DISTANCE);
+                    this.updateScreen(screenId, 'curvature', preset.curvature || CONFIG.DEFAULTS.PRESET_CURVATURE);
+                    
+                    // Update DOM values
+                    inputs.diagonal.value = preset.diagonal;
+                    inputs.width.value = preset.width;
+                    inputs.height.value = preset.height;
+                    inputs.distance.value = this.unitManager.convertFromMm(preset.distance || CONFIG.DEFAULTS.PRESET_DISTANCE);
+                    inputs.curvature.value = preset.curvature || '';
+                } else {
+                    // Fallback to old parsing method if preset not found in CONFIG
+                    const [diag, w, h] = value.split('-');
+                    this.updateScreen(screenId, 'preset', value);
+                    this.updateScreen(screenId, 'diagonal', parseFloat(diag));
+                    this.updateScreen(screenId, 'width', parseInt(w));
+                    this.updateScreen(screenId, 'height', parseInt(h));
+                    
+                    // Update DOM values
+                    inputs.diagonal.value = diag;
+                    inputs.width.value = w;
+                    inputs.height.value = h;
+                }
             } else {
                 this.updateScreen(screenId, 'preset', '');
             }
@@ -621,12 +648,18 @@ class ScreenManager {
         nativeOutputs[0].innerHTML = `${widthFormatted} x ${heightFormatted}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">${unitLabel}</span>`;
         nativeOutputs[1].innerHTML = `${screenCalc.fov_horizontal.toFixed(1)} x ${screenCalc.fov_vertical.toFixed(1)}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">deg</span>`;
         nativeOutputs[2].innerHTML = `${screenCalc.ppi}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPI</span>`;
-        nativeOutputs[3].innerHTML = `${screenCalc.ppd.toFixed(1)}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPD</span>`;
+        
+        // Add retina badge if visual density is >= 60 PPD
+        const retinaBadge = screenCalc.ppd >= 60 ? '<span class="retina-badge"><span class="material-icons">visibility</span></span>' : '';
+        nativeOutputs[3].innerHTML = `${retinaBadge}${screenCalc.ppd.toFixed(1)}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPD</span>`;
         
         if (showScaled) {
             scaledOutputs[0].innerHTML = `${screenCalc.resolution_scaled[0]} x ${screenCalc.resolution_scaled[1]}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">px</span>`;
             scaledOutputs[1].innerHTML = `${screenCalc.ppi_scaled}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPI</span>`;
-            scaledOutputs[2].innerHTML = `${screenCalc.ppd_scaled.toFixed(1)}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPD</span>`;
+            
+            // Add retina badge if scaled visual density is >= 60 PPD
+            const scaledRetinaBadge = screenCalc.ppd_scaled >= 60 ? '<span class="retina-badge"><span class="material-icons">visibility</span></span>' : '';
+            scaledOutputs[2].innerHTML = `${scaledRetinaBadge}${screenCalc.ppd_scaled.toFixed(1)}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPD</span>`;
         }
     }
     
@@ -730,14 +763,7 @@ class ScreenManager {
             curvature: null,
             scaling: 100
         });
-        
-        // Reset view mode to default
-        const defaultViewMode = document.querySelector('input[name="viewMode"][value="realSize"]');
-        if (defaultViewMode) {
-            defaultViewMode.checked = true;
-            this.visualizer.setViewMode('realSize');
-            this.updatePillToggle('realSize');
-        }
+
         
         // Re-enable auto-save and save the default state
         CONFIG.STORAGE.AUTO_SAVE = originalAutoSave;
@@ -802,10 +828,6 @@ class ScreenManager {
      * @returns {Object} Current state object
      */
     getCurrentState() {
-        // Get current view mode
-        const checkedViewMode = document.querySelector('input[name="viewMode"]:checked');
-        const viewMode = checkedViewMode ? checkedViewMode.value : 'realSize';
-        
         return {
             screens: this.screens.map(screen => ({
                 id: screen.id,
@@ -818,9 +840,7 @@ class ScreenManager {
                 curvature: screen.curvature,
                 scaling: screen.scaling
             })),
-            uiState: {
-                viewMode: viewMode
-            }
+            uiState: {}
         };
     }
 
@@ -1097,14 +1117,7 @@ class ScreenManager {
      * @param {Object} uiState - UI state to restore
      */
     restoreUIState(uiState) {
-        if (uiState.viewMode) {
-            const viewModeRadio = document.querySelector(`input[name="viewMode"][value="${uiState.viewMode}"]`);
-            if (viewModeRadio) {
-                viewModeRadio.checked = true;
-                this.visualizer.setViewMode(uiState.viewMode);
-                this.updatePillToggle(uiState.viewMode);
-            }
-        }
+        // No UI state to restore for now
     }
 
     /**

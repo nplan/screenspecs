@@ -5,7 +5,7 @@ const CONFIG = {
     // Color Palette
     COLORS: {
         // Screen visualization colors
-        SCREEN_COLORS: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3', '#54A0FF'],
+        SCREEN_COLORS: ['#9b5de5', '#00f5d4', '#f15bb5', '#00bbf9', '#fee440'],
         
         // Transparency and label styling
         SCREEN_FILL_OPACITY: '15', // Used as hex suffix for screen fill colors
@@ -155,28 +155,28 @@ const CONFIG = {
 
     // Monitor Presets
     PRESETS: [
-        { value: "24-1920-1080", diagonal: 24, width: 1920, height: 1080, name: "FHD", label: '24" FHD (1920 x 1080)', selected: true },
-        { value: "27-2560-1440", diagonal: 27, width: 2560, height: 1440, name: "QHD", label: '27" QHD (2560 x 1440)' },
-        { value: "27-3840-2160", diagonal: 27, width: 3840, height: 2160, name: "UHD 4K", label: '27" UHD 4K (3840 x 2160)' },
-        { value: "27-5120-2880", diagonal: 27, width: 5120, height: 2880, name: "5K", label: '27" 5K (5120 x 2880)' },
-        { value: "32-2560-1440", diagonal: 32, width: 2560, height: 1440, name: "QHD", label: '32" QHD (2560 x 1440)' },
-        { value: "32-3840-2160", diagonal: 32, width: 3840, height: 2160, name: "UHD 4K", label: '32" UHD 4K (3840 x 2160)' },
-        { value: "32-6144-3456", diagonal: 32, width: 6144, height: 3456, name: "6K", label: '32" 6K (6144 x 3456)' },
-        { value: "32-7680-4320", diagonal: 32, width: 7680, height: 4320, name: "8K", label: '32" 8K (7680 x 4320)' },
-        { value: "34-3440-1440", diagonal: 34, width: 3440, height: 1440, name: "UWQHD", label: '34" UWQHD (3440 x 1440)' },
-        { value: "38-3840-1600", diagonal: 38, width: 3840, height: 1600, name: "WQHD+", label: '38" WQHD+ (3840 x 1600)' },
-        { value: "40-5120-2160", diagonal: 40, width: 5120, height: 2160, name: "5K2K", label: '40" 5K2K (5120 x 2160)' },
-        { value: "43-3840-2160", diagonal: 43, width: 3840, height: 2160, name: "UHD 4K", label: '43" UHD 4K (3840 x 2160)' },
-        { value: "45-5120-2160", diagonal: 45, width: 5120, height: 2160, name: "5K2K", label: '45" 5K2K (5120 x 2160)' },
-        { value: "49-5120-1440", diagonal: 49, width: 5120, height: 1440, name: "DQHD", label: '49" DQHD (5120 x 1440)' },
-        { value: "57-7680-2160", diagonal: 57, width: 7680, height: 2160, name: "DUHD", label: '57" DUHD (7680 x 2160)' },
-        { value: "65-7680-4320", diagonal: 65, width: 7680, height: 4320, name: "8K", label: '65" 8K (7680 x 4320)' }
+        { value: "24-1920-1080", diagonal: 24, width: 1920, height: 1080, distance: 600, curvature: null, name: "FHD", label: '24" FHD (1920 x 1080)', selected: true },
+        { value: "27-2560-1440", diagonal: 27, width: 2560, height: 1440, distance: 600, curvature: null, name: "QHD", label: '27" QHD (2560 x 1440)' },
+        { value: "27-3840-2160", diagonal: 27, width: 3840, height: 2160, distance: 600, curvature: null, name: "UHD 4K", label: '27" UHD 4K (3840 x 2160)' },
+        { value: "27-5120-2880", diagonal: 27, width: 5120, height: 2880, distance: 600, curvature: null, name: "5K", label: '27" 5K (5120 x 2880)' },
+        { value: "32-2560-1440", diagonal: 32, width: 2560, height: 1440, distance: 650, curvature: null, name: "QHD", label: '32" QHD (2560 x 1440)' },
+        { value: "32-3840-2160", diagonal: 32, width: 3840, height: 2160, distance: 650, curvature: null, name: "UHD 4K", label: '32" UHD 4K (3840 x 2160)' },
+        { value: "32-6144-3456", diagonal: 32, width: 6144, height: 3456, distance: 600, curvature: null, name: "6K", label: '32" 6K (6144 x 3456)' },
+        { value: "32-7680-4320", diagonal: 32, width: 7680, height: 4320, distance: 600, curvature: null, name: "8K", label: '32" 8K (7680 x 4320)' },
+        { value: "34-3440-1440", diagonal: 34, width: 3440, height: 1440, distance: 600, curvature: 1500, name: "UWQHD", label: '34" UWQHD (3440 x 1440)' },
+        { value: "38-3840-1600", diagonal: 38, width: 3840, height: 1600, distance: 600, curvature: 2300, name: "WQHD+", label: '38" WQHD+ (3840 x 1600)' },
+        { value: "40-5120-2160", diagonal: 40, width: 5120, height: 2160, distance: 650, curvature: 2500, name: "5K2K", label: '40" 5K2K (5120 x 2160)' },
+        { value: "43-3840-2160", diagonal: 43, width: 3840, height: 2160, distance: 600, curvature: null, name: "UHD 4K", label: '43" UHD 4K (3840 x 2160)' },
+        { value: "45-5120-2160", diagonal: 45, width: 5120, height: 2160, distance: 750, curvature: 800, name: "5K2K", label: '45" 5K2K (5120 x 2160)' },
+        { value: "49-5120-1440", diagonal: 49, width: 5120, height: 1440, distance: 600, curvature: 1800, name: "DQHD", label: '49" DQHD (5120 x 1440)' },
+        { value: "57-7680-2160", diagonal: 57, width: 7680, height: 2160, distance: 650, curvature: 1000, name: "DUHD", label: '57" DUHD (7680 x 2160)' },
+        { value: "65-3840-2160", diagonal: 65, width: 3840, height: 2160, distance: 1500, curvature: null, name: "UHD 4K", label: '65" 4K (3840 x 2160)' },
+        { value: "65-7680-4320", diagonal: 65, width: 7680, height: 4320, distance: 1500, curvature: null, name: "8K", label: '65" 8K (7680 x 4320)' }
     ],
 
     // Default Values
     DEFAULTS: {
         VIEW_DISTANCE: 800, // millimeters
-        VIEW_MODE: 'realSize',
         PRESET_DIAGONAL: 24, // inches
         PRESET_RESOLUTION: [1920, 1080], // pixels
         PRESET_DISTANCE: 600, // millimeters (60 cm default)
@@ -272,9 +272,6 @@ const CONFIG = {
             
             // View controls
             CANVAS: 'Visual representation of monitor configurations',
-            VIEW_MODE_GROUP: 'Visualization mode selection',
-            REAL_SIZE: 'Show monitors at actual size relative to each other',
-            FOV_BASED: 'Show monitors based on field of view from viewing distance',
             
             // Actions
             ADD_SCREEN: 'Add new monitor configuration',

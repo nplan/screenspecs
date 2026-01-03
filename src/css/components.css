@@ -330,6 +330,110 @@ fieldset legend {
     color: var(--text-white) !important;
 }
 
+/* Angle toggle component for visualizer - 3 options (Front, Top, 3D) */
+.angle-toggle {
+    position: relative;
+    width: 180px;
+    height: 40px;
+    display: inline-block;
+    background-color: var(--bg-secondary);
+    border-radius: 20px;
+    box-shadow: var(--shadow-medium);
+    transition: all 0.2s ease;
+}
+
+.angle-toggle input[type="radio"] {
+    display: none;
+}
+
+.angle-toggle .slider {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 58px;
+    height: 36px;
+    background-color: var(--text-secondary);
+    border-radius: 18px;
+    transition: left 0.3s ease;
+    box-shadow: var(--shadow-medium);
+    z-index: 0;
+}
+
+/* Slider positions for 3 options */
+.angle-toggle.top-selected .slider {
+    left: 60px;
+}
+
+.angle-toggle.isometric-selected .slider {
+    left: 120px;
+}
+
+.angle-toggle label {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 33.33%;
+    text-align: center;
+    z-index: 1;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.3s ease;
+    white-space: nowrap;
+}
+
+.angle-toggle label[for="frontView"] {
+    left: 0;
+}
+
+.angle-toggle label[for="topView"] {
+    left: 33.33%;
+}
+
+.angle-toggle label[for="isometricView"] {
+    left: 66.66%;
+}
+
+/* Default state: Front is highlighted (white), others are not (gray) */
+.angle-toggle label[for="frontView"] {
+    color: var(--text-white) !important;
+}
+
+.angle-toggle label[for="topView"] {
+    color: var(--text-secondary) !important;
+}
+
+.angle-toggle label[for="isometricView"] {
+    color: var(--text-secondary) !important;
+}
+
+/* Top selected state */
+.angle-toggle.top-selected label[for="frontView"] {
+    color: var(--text-secondary) !important;
+}
+
+.angle-toggle.top-selected label[for="topView"] {
+    color: var(--text-white) !important;
+}
+
+.angle-toggle.top-selected label[for="isometricView"] {
+    color: var(--text-secondary) !important;
+}
+
+/* 3D selected state */
+.angle-toggle.isometric-selected label[for="frontView"] {
+    color: var(--text-secondary) !important;
+}
+
+.angle-toggle.isometric-selected label[for="topView"] {
+    color: var(--text-secondary) !important;
+}
+
+.angle-toggle.isometric-selected label[for="isometricView"] {
+    color: var(--text-white) !important;
+}
+
 /* Error handling and validation */
 .validation-errors {
     margin: 1rem 0;
@@ -391,40 +495,6 @@ fieldset legend {
     to { 
         opacity: 1; 
         transform: translateY(0); 
-    }
-}
-
-/* Responsive styles for add-screen button and mode-toggle */
-@media (max-width: 768px) {
-    .view-mode-controls {
-        justify-content: center;
-    }
-
-    .mode-toggle {
-        justify-content: center;
-    }
-}
-
-@media (max-width: 600px) {
-    #add-screen {
-        width: 36px;
-        height: 36px;
-        font-size: 18px;
-        margin-right: 0.75rem;
-    }
-    
-    .mode-toggle {
-        width: 100px;
-        height: 36px;
-    }
-    
-    .mode-toggle .slider {
-        width: 46px;
-        height: 32px;
-    }
-    
-    .mode-toggle.fov-selected .slider {
-        left: 52px;
     }
 }
 
@@ -525,8 +595,38 @@ fieldset legend {
     font-weight: 600;
 }
 
-/* Mobile responsive */
+/* Responsive styles */
 @media (max-width: 768px) {
+    /* Toggle controls */
+    .view-mode-controls {
+        justify-content: center;
+    }
+
+    .mode-toggle {
+        justify-content: center;
+    }
+    
+    .mode-toggle.fov-selected .slider {
+        left: 52px;
+    }
+    
+    .view-angle-controls {
+        justify-content: center;
+    }
+
+    .angle-toggle {
+        justify-content: center;
+    }
+    
+    .angle-toggle.top-selected .slider {
+        left: 60px;
+    }
+    
+    .angle-toggle.isometric-selected .slider {
+        left: 120px;
+    }
+    
+    /* Modal */
     .modal-overlay {
         padding: 16px;
     }
@@ -549,6 +649,47 @@ fieldset legend {
     
     .info-section h3 {
         font-size: 1rem;
+    }
+}
+
+@media (max-width: 600px) {
+    #add-screen {
+        width: 36px;
+        height: 36px;
+        font-size: 18px;
+        margin-right: 0.75rem;
+    }
+    
+    .mode-toggle {
+        width: 100px;
+        height: 36px;
+    }
+    
+    .mode-toggle .slider {
+        width: 46px;
+        height: 32px;
+    }
+    
+    .mode-toggle.fov-selected .slider {
+        left: 52px;
+    }
+    
+    .angle-toggle {
+        width: 150px;
+        height: 36px;
+    }
+    
+    .angle-toggle .slider {
+        width: 48px;
+        height: 32px;
+    }
+    
+    .angle-toggle.top-selected .slider {
+        left: 50px;
+    }
+    
+    .angle-toggle.isometric-selected .slider {
+        left: 100px;
     }
 }
 
@@ -597,4 +738,17 @@ fieldset legend {
 .amazon-link:focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
+}
+
+/* Retina badge for high visual density */
+.retina-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 0.5rem;
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.retina-badge .material-icons {
+    font-size: 1rem;
 }

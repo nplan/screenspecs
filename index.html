@@ -72,6 +72,16 @@
     <link rel="stylesheet" href="src/css/visualizer.css">
     <link rel="stylesheet" href="src/css/theme.css">
     <script defer src="https://cloud.umami.is/script.js" data-website-id="26033bb2-71ae-40cd-8c71-946af4004829"></script>
+    
+    <!-- Import map for Three.js modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
 </head>
 <body>
     <div class="header-controls" role="toolbar" aria-label="Application controls">
@@ -92,14 +102,16 @@
         <canvas class="visualizer-canvas" id="screenCanvas" aria-label="Visual representation of monitor configurations"></canvas>
         <div class="visualizer-controls" role="toolbar" aria-label="Visualization controls">
             <button id="add-screen" aria-label="Add new monitor configuration">add</button>
-            <div class="view-mode-controls">
-                <fieldset class="mode-toggle" role="radiogroup" aria-label="Visualization mode selection">
-                    <legend class="sr-only">Choose visualization mode</legend>
+            <div class="view-angle-controls">
+                <fieldset class="angle-toggle" role="radiogroup" aria-label="Camera angle selection">
+                    <legend class="sr-only">Choose camera angle</legend>
                     <span class="slider"></span>
-                    <input type="radio" id="realSize" name="viewMode" value="realSize" checked aria-label="Show monitors at actual size relative to each other">
-                    <label for="realSize">Size</label>
-                    <input type="radio" id="fovBased" name="viewMode" value="fovBased" aria-label="Show monitors based on field of view from viewing distance">
-                    <label for="fovBased">FOV</label>
+                    <input type="radio" id="frontView" name="viewAngle" value="front" checked aria-label="Show monitors from front view">
+                    <label for="frontView">Front</label>
+                    <input type="radio" id="topView" name="viewAngle" value="top" aria-label="Show monitors from top-down view">
+                    <label for="topView">Top</label>
+                    <input type="radio" id="isometricView" name="viewAngle" value="3d" aria-label="Show monitors from 3D isometric angle">
+                    <label for="isometricView">3D</label>
                 </fieldset>
             </div>
         </div>
@@ -233,8 +245,6 @@
     </div>
     
     <footer role="contentinfo">
-        vibecoded
-        <br>
         &copy; 2025 Plab
     </footer>
     
