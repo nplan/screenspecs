@@ -213,7 +213,7 @@ class ScreenVisualizer3D {
         // Create line from user (origin) to furthest screen center using Line2 for thick lines
         const lineGeometry = new LineGeometry();
         lineGeometry.setPositions([
-            0, 0, -0.05,                           // User position
+            0, 0, 0,                           // User position
             0, 0, furthestDistanceMeters       // Furthest screen center
         ]);
         
@@ -653,12 +653,12 @@ class ScreenVisualizer3D {
             this.userSphere.material.dispose();
         }
         
-        // Create sphere with 10cm diameter (0.1m) at user position (origin)
-        const sphereGeometry = new THREE.SphereGeometry(0.05, 32, 16); // radius = 0.05m (diameter = 0.1m = 10cm)
+        // Create sphere with 18cm diameter (0.18m) at user position (origin)
+        const sphereGeometry = new THREE.SphereGeometry(0.09, 32, 16);
         
         // Create opaque blue material with shading
         const sphereMaterial = new THREE.MeshLambertMaterial({ 
-            color: 0x87CEEB, // Sky blue color (lighter blue)
+            color: 0xe3e3e3,
             transparent: false,
             opacity: 1 // Fully opaque
         });
@@ -666,7 +666,7 @@ class ScreenVisualizer3D {
         this.userSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
         
         // Position sphere at origin (where user/camera is)
-        this.userSphere.position.set(0, 0, 0);
+        this.userSphere.position.set(0, 0, 0.09);
         
         // Add to scene
         this.scene.add(this.userSphere);
@@ -1172,7 +1172,7 @@ class ScreenVisualizer3D {
             
             // Position camera above the midpoint between user and furthest screen
             const midpointZ = -furthestDistanceMeters / 2; // Midpoint in negative Z
-            const cameraHeight = Math.max(0.8, furthestDistanceMeters * 1.2); // Height above scene
+            const cameraHeight = Math.max(0.8, furthestDistanceMeters * 1.5); // Height above scene
             
             this.targetCameraPosition.set(0, cameraHeight, midpointZ);
             
@@ -1580,7 +1580,7 @@ class ScreenVisualizer3D {
         // Update line geometry with new endpoint
         const lineGeometry = new LineGeometry();
         lineGeometry.setPositions([
-            0, 0, -0.05,                           // User position
+            0, 0, 0,                           // User position
             0, 0, furthestDistanceMeters       // Furthest screen center
         ]);
         
