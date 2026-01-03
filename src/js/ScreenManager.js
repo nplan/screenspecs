@@ -182,15 +182,30 @@ class ScreenManager {
         }
         this.usedNumbers.add(screenNumber);
         
+        // If a preset is specified, get preset data for defaults
+        let presetData = {};
+        if (data.preset) {
+            const preset = CONFIG.PRESET_UTILS ? CONFIG.PRESET_UTILS.getPresetByValue(data.preset) : null;
+            if (preset) {
+                presetData = {
+                    diagonal: preset.diagonal,
+                    width: preset.width,
+                    height: preset.height,
+                    distance: preset.distance || CONFIG.DEFAULTS.PRESET_DISTANCE,
+                    curvature: preset.curvature || CONFIG.DEFAULTS.PRESET_CURVATURE
+                };
+            }
+        }
+        
         const screenData = {
             id: screenId,
             screenNumber: screenNumber,
             preset: data.preset || '',
-            diagonal: data.diagonal || null,
-            width: data.width || null,
-            height: data.height || null,
-            distance: data.distance || CONFIG.DEFAULTS.PRESET_DISTANCE,
-            curvature: data.curvature || CONFIG.DEFAULTS.PRESET_CURVATURE,
+            diagonal: data.diagonal || presetData.diagonal || null,
+            width: data.width || presetData.width || null,
+            height: data.height || presetData.height || null,
+            distance: data.distance || presetData.distance || CONFIG.DEFAULTS.PRESET_DISTANCE,
+            curvature: data.curvature !== undefined ? data.curvature : (presetData.curvature !== undefined ? presetData.curvature : CONFIG.DEFAULTS.PRESET_CURVATURE),
             scaling: data.scaling || CONFIG.DEFAULTS.PRESET_SCALING
         };
         
@@ -399,16 +414,37 @@ class ScreenManager {
             inputs.preset.classList.remove('input-error');
             
             if (value) {
-                const [diag, w, h] = value.split('-');
-                this.updateScreen(screenId, 'preset', value);
-                this.updateScreen(screenId, 'diagonal', parseFloat(diag));
-                this.updateScreen(screenId, 'width', parseInt(w));
-                this.updateScreen(screenId, 'height', parseInt(h));
+                // Find the preset configuration
+                const preset = CONFIG.PRESET_UTILS ? CONFIG.PRESET_UTILS.getPresetByValue(value) : null;
                 
-                // Update DOM values
-                inputs.diagonal.value = diag;
-                inputs.width.value = w;
-                inputs.height.value = h;
+                if (preset) {
+                    // Update all preset values including distance and curvature
+                    this.updateScreen(screenId, 'preset', value);
+                    this.updateScreen(screenId, 'diagonal', preset.diagonal);
+                    this.updateScreen(screenId, 'width', preset.width);
+                    this.updateScreen(screenId, 'height', preset.height);
+                    this.updateScreen(screenId, 'distance', preset.distance || CONFIG.DEFAULTS.PRESET_DISTANCE);
+                    this.updateScreen(screenId, 'curvature', preset.curvature || CONFIG.DEFAULTS.PRESET_CURVATURE);
+                    
+                    // Update DOM values
+                    inputs.diagonal.value = preset.diagonal;
+                    inputs.width.value = preset.width;
+                    inputs.height.value = preset.height;
+                    inputs.distance.value = this.unitManager.convertFromMm(preset.distance || CONFIG.DEFAULTS.PRESET_DISTANCE);
+                    inputs.curvature.value = preset.curvature || '';
+                } else {
+                    // Fallback to old parsing method if preset not found in CONFIG
+                    const [diag, w, h] = value.split('-');
+                    this.updateScreen(screenId, 'preset', value);
+                    this.updateScreen(screenId, 'diagonal', parseFloat(diag));
+                    this.updateScreen(screenId, 'width', parseInt(w));
+                    this.updateScreen(screenId, 'height', parseInt(h));
+                    
+                    // Update DOM values
+                    inputs.diagonal.value = diag;
+                    inputs.width.value = w;
+                    inputs.height.value = h;
+                }
             } else {
                 this.updateScreen(screenId, 'preset', '');
             }
