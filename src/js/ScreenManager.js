@@ -614,12 +614,18 @@ class ScreenManager {
         nativeOutputs[0].innerHTML = `${widthFormatted} x ${heightFormatted}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">${unitLabel}</span>`;
         nativeOutputs[1].innerHTML = `${screenCalc.fov_horizontal.toFixed(1)} x ${screenCalc.fov_vertical.toFixed(1)}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">deg</span>`;
         nativeOutputs[2].innerHTML = `${screenCalc.ppi}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPI</span>`;
-        nativeOutputs[3].innerHTML = `${screenCalc.ppd.toFixed(1)}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPD</span>`;
+        
+        // Add retina badge if visual density is >= 60 PPD
+        const retinaBadge = screenCalc.ppd >= 60 ? '<span class="retina-badge"><span class="material-icons">visibility</span></span>' : '';
+        nativeOutputs[3].innerHTML = `${retinaBadge}${screenCalc.ppd.toFixed(1)}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPD</span>`;
         
         if (showScaled) {
             scaledOutputs[0].innerHTML = `${screenCalc.resolution_scaled[0]} x ${screenCalc.resolution_scaled[1]}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">px</span>`;
             scaledOutputs[1].innerHTML = `${screenCalc.ppi_scaled}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPI</span>`;
-            scaledOutputs[2].innerHTML = `${screenCalc.ppd_scaled.toFixed(1)}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPD</span>`;
+            
+            // Add retina badge if scaled visual density is >= 60 PPD
+            const scaledRetinaBadge = screenCalc.ppd_scaled >= 60 ? '<span class="retina-badge"><span class="material-icons">visibility</span></span>' : '';
+            scaledOutputs[2].innerHTML = `${scaledRetinaBadge}${screenCalc.ppd_scaled.toFixed(1)}<span class="${CONFIG.SELECTORS.CLASSES.OUTPUT_UNIT}">PPD</span>`;
         }
     }
     

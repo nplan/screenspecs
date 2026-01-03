@@ -739,3 +739,16 @@ fieldset legend {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
 }
+
+/* Retina badge for high visual density */
+.retina-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 0.5rem;
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.retina-badge .material-icons {
+    font-size: 1rem;
+}
