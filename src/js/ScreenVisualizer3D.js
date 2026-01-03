@@ -34,6 +34,16 @@ class ScreenVisualizer3D {
             spherical: new THREE.Spherical(1, Math.PI / 2, 0), // Initialize with proper radius, phi, theta
             target: new THREE.Vector3()
         };
+        
+        // Zoom state for wheel and pinch zoom
+        this.zoomState = {
+            minZoom: 0.2,  // Minimum zoom factor (10% of original distance)
+            maxZoom: 5.0,  // Maximum zoom factor (500% of original distance)
+            zoomFactor: 1.0, // Current zoom multiplier
+            baseDistance: 1.0, // Base distance for zoom calculations
+            pinching: false,
+            lastPinchDistance: 0
+        };
         this.screenMeshes = []; // Array to hold multiple screen meshes
         this.userSphere = null; // Sphere representing user position (20cm diameter)
         this.viewAxisLine = null; // Line showing view axis to furthest screen
@@ -796,6 +806,72 @@ class ScreenVisualizer3D {
                 event.preventDefault();
             }
             this.orbitState.dragging = false;
+            this.zoomState.pinching = false;
+        };
+        
+        // Scroll wheel zoom
+        const onWheel = (event) => {
+            // Only allow zoom in 3D mode
+            if (this.viewAngle !== '3d' || !this.orbitState.enabled) {
+                return;
+            }
+            
+            event.preventDefault();
+            
+            const zoomSpeed = 0.1;
+            const delta = event.deltaY > 0 ? 1 + zoomSpeed : 1 - zoomSpeed;
+            this.applyZoom(delta);
+        };
+        
+        // Enhanced touch handling for pinch-to-zoom
+        const onTouchStartEnhanced = (event) => {
+            if (event.touches.length === 1) {
+                // Single touch - orbit controls
+                onTouchStart(event);
+            } else if (event.touches.length === 2) {
+                // Two touches - pinch zoom (only in 3D mode)
+                if (this.viewAngle !== '3d' || !this.orbitState.enabled) {
+                    return;
+                }
+                
+                event.preventDefault();
+                this.orbitState.dragging = false; // Stop any orbit dragging
+                this.zoomState.pinching = true;
+                
+                const touch1 = event.touches[0];
+                const touch2 = event.touches[1];
+                const dx = touch2.clientX - touch1.clientX;
+                const dy = touch2.clientY - touch1.clientY;
+                this.zoomState.lastPinchDistance = Math.sqrt(dx * dx + dy * dy);
+            }
+        };
+        
+        const onTouchMoveEnhanced = (event) => {
+            if (event.touches.length === 1 && !this.zoomState.pinching) {
+                // Single touch - orbit controls
+                onTouchMove(event);
+            } else if (event.touches.length === 2 && this.zoomState.pinching) {
+                // Two touches - pinch zoom (only in 3D mode)
+                if (this.viewAngle !== '3d' || !this.orbitState.enabled) {
+                    this.zoomState.pinching = false;
+                    return;
+                }
+                
+                event.preventDefault();
+                
+                const touch1 = event.touches[0];
+                const touch2 = event.touches[1];
+                const dx = touch2.clientX - touch1.clientX;
+                const dy = touch2.clientY - touch1.clientY;
+                const currentPinchDistance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (this.zoomState.lastPinchDistance > 0) {
+                    const pinchDelta = currentPinchDistance / this.zoomState.lastPinchDistance;
+                    this.applyZoom(pinchDelta, 0.5); // Slower pinch zoom speed
+                }
+                
+                this.zoomState.lastPinchDistance = currentPinchDistance;
+            }
         };
         
         // Add event listeners
@@ -803,8 +879,11 @@ class ScreenVisualizer3D {
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
         
-        canvas.addEventListener('touchstart', onTouchStart, { passive: false });
-        document.addEventListener('touchmove', onTouchMove, { passive: false });
+        // Add wheel zoom
+        canvas.addEventListener('wheel', onWheel, { passive: false });
+        
+        canvas.addEventListener('touchstart', onTouchStartEnhanced, { passive: false });
+        document.addEventListener('touchmove', onTouchMoveEnhanced, { passive: false });
         document.addEventListener('touchend', onTouchEnd, { passive: false });
         
         // Store references for cleanup
@@ -813,8 +892,9 @@ class ScreenVisualizer3D {
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
             
-            canvas.removeEventListener('touchstart', onTouchStart);
-            document.removeEventListener('touchmove', onTouchMove);
+            canvas.removeEventListener('wheel', onWheel);
+            canvas.removeEventListener('touchstart', onTouchStartEnhanced);
+            document.removeEventListener('touchmove', onTouchMoveEnhanced);
             document.removeEventListener('touchend', onTouchEnd);
         };
         
@@ -832,6 +912,30 @@ class ScreenVisualizer3D {
         
         this.camera.position.copy(position);
         this.camera.lookAt(this.orbitState.target);
+    }
+    
+    /**
+     * Apply zoom by adjusting camera distance or spherical radius
+     * @param {number} delta - Zoom delta (1.0 = no change, > 1.0 = zoom out, < 1.0 = zoom in)
+     * @param {number} sensitivity - Zoom sensitivity multiplier (default 1.0)
+     */
+    applyZoom(delta, sensitivity = 1.0) {
+        if (!this.camera || this.viewAngle !== '3d' || !this.orbitState.enabled) return;
+        
+        // Apply sensitivity to the delta
+        const adjustedDelta = 1 + (delta - 1) * sensitivity;
+        
+        // Update zoom factor with constraints
+        const newZoomFactor = this.zoomState.zoomFactor * adjustedDelta;
+        this.zoomState.zoomFactor = Math.max(
+            this.zoomState.minZoom,
+            Math.min(this.zoomState.maxZoom, newZoomFactor)
+        );
+        
+        // In 3D view, adjust the spherical radius
+        const newRadius = this.zoomState.baseDistance / this.zoomState.zoomFactor;
+        this.orbitState.spherical.radius = Math.max(0.01, newRadius); // Prevent zero radius
+        this.updateCameraFromSpherical();
     }
     
     calculateFurthestScreenDistance() {
@@ -1165,6 +1269,10 @@ class ScreenVisualizer3D {
             // Front view - camera at origin (same position as user sphere)
             this.targetCameraPosition.set(0, 0, 0);
             this.targetCameraLookAt.set(0, 0, -1); // Look towards negative Z direction
+            
+            // Reset zoom for front view
+            this.zoomState.zoomFactor = 1.0;
+            this.zoomState.baseDistance = 1.0;
         } else if (this.viewAngle === 'top') {
             // Top-down view - camera above looking straight down
             const furthestDistance = this.calculateFurthestScreenDistance();
@@ -1181,6 +1289,10 @@ class ScreenVisualizer3D {
             
             // Update orbit target for consistency (though orbit is disabled in top view)
             this.orbitState.target.set(0, 0, midpointZ);
+            
+            // Set base distance for zoom (use camera height)
+            this.zoomState.zoomFactor = 1.0;
+            this.zoomState.baseDistance = cameraHeight;
         } else {
             // 3D isometric view - camera at an angle to see both sphere and screens
             // Calculate camera position based on furthest screen distance
@@ -1215,6 +1327,10 @@ class ScreenVisualizer3D {
             const theta = Math.atan2(offset.x, offset.z);
             
             this.orbitState.spherical.set(radius, phi, theta);
+            
+            // Set base distance for zoom (use spherical radius)
+            this.zoomState.zoomFactor = 1.0;
+            this.zoomState.baseDistance = radius;
         }
         
         // Start smooth animation to target position
