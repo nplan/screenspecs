@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Point to your sitemap if you have one
+Sitemap: https://screenspecs.app/sitemap.xml
