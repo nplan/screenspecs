@@ -1,5 +1,7 @@
 User-agent: *
 Allow: /
 
-# Point to your sitemap if you have one
+User-agent: Twitterbot
+Allow: /
+
 Sitemap: https://screenspecs.app/sitemap.xml
