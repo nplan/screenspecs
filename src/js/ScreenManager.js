@@ -86,7 +86,7 @@ class ScreenManager {
                 // Update browser history with clean state (without URL params)
                 this.updateURL(true);
             } else {
-                // Initialize with default screen if no saved state
+                // Initialize with default screens if no saved state
                 this.addScreen({
                     preset: '24-1920-1080',
                     diagonal: CONFIG.DEFAULTS.PRESET_DIAGONAL,
@@ -94,6 +94,16 @@ class ScreenManager {
                     height: CONFIG.DEFAULTS.PRESET_RESOLUTION[1],
                     distance: CONFIG.DEFAULTS.PRESET_DISTANCE,
                     curvature: CONFIG.DEFAULTS.PRESET_CURVATURE,
+                    scaling: CONFIG.DEFAULTS.PRESET_SCALING
+                });
+                // Add second default screen: 34" ultrawide
+                this.addScreen({
+                    preset: '34-3440-1440',
+                    diagonal: 34,
+                    width: 3440,
+                    height: 1440,
+                    distance: 600,
+                    curvature: 1500,
                     scaling: CONFIG.DEFAULTS.PRESET_SCALING
                 });
             }
@@ -753,7 +763,7 @@ class ScreenManager {
         this.storage.clear();
         this.clearURL();
         
-        // Add default screen (without triggering auto-save)
+        // Add default screens (without triggering auto-save)
         this.addScreen({
             preset: '24-1920-1080',
             diagonal: 24,
@@ -763,8 +773,17 @@ class ScreenManager {
             curvature: null,
             scaling: 100
         });
+        // Add second default screen: 34" ultrawide
+        this.addScreen({
+            preset: '34-3440-1440',
+            diagonal: 34,
+            width: 3440,
+            height: 1440,
+            distance: 600,
+            curvature: 1500,
+            scaling: 100
+        });
 
-        
         // Re-enable auto-save and save the default state
         CONFIG.STORAGE.AUTO_SAVE = originalAutoSave;
         this.saveState();
