@@ -44,6 +44,18 @@ class ScreenVisualizer3D {
             pinching: false,
             lastPinchDistance: 0
         };
+
+        // Front view look-around state (camera rotation from fixed position)
+        this.lookAroundState = {
+            dragging: false,
+            mouseX: 0,
+            mouseY: 0,
+            currentYaw: 0,   // Current horizontal rotation (radians)
+            currentPitch: 0, // Current vertical rotation (radians)
+            maxYaw: 0,       // Max horizontal rotation (calculated from screen FOV)
+            maxPitch: 0,     // Max vertical rotation (calculated from screen FOV)
+            springBack: false // Whether to animate back to center
+        };
         this.screenMeshes = []; // Array to hold multiple screen meshes
         this.userSphere = null; // Sphere representing user position (20cm diameter)
         this.viewAxisLine = null; // Line showing view axis to furthest screen
@@ -695,23 +707,40 @@ class ScreenVisualizer3D {
         
         // Manual orbit controls implementation
         const onMouseDown = (event) => {
+            // Handle front view look-around
+            if (this.viewAngle === 'front') {
+                event.preventDefault();
+                this.lookAroundState.dragging = true;
+                this.lookAroundState.mouseX = event.clientX;
+                this.lookAroundState.mouseY = event.clientY;
+                this.lookAroundState.springBack = false;
+
+                // Update FOV limits based on current screens
+                const fovLimits = this.calculateLookAroundFOVLimits();
+                this.lookAroundState.maxYaw = fovLimits.maxYaw;
+                this.lookAroundState.maxPitch = fovLimits.maxPitch;
+
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+
             if (!this.orbitState.enabled) return;
-            
+
             event.preventDefault();
             this.orbitState.dragging = true;
             this.orbitState.mouseX = event.clientX;
             this.orbitState.mouseY = event.clientY;
-            
+
             // Stop camera animation when user starts manual orbiting
             this.isAnimating = false;
-            
+
             // Update orbit state to use current camera position as starting point
             // This prevents strange zoom effects when interrupting animation
             if (this.viewAngle === '3d') {
                 // Use current camera position and current target to recalculate spherical coordinates
                 const offset = new THREE.Vector3();
                 offset.copy(this.camera.position).sub(this.orbitState.target);
-                
+
                 const radius = offset.length();
                 if (radius > 0) { // Avoid division by zero
                     const phi = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
@@ -719,32 +748,66 @@ class ScreenVisualizer3D {
                     this.orbitState.spherical.set(radius, phi, theta);
                 }
             }
-            
+
             canvas.style.cursor = 'grabbing';
         };
         
         const onMouseMove = (event) => {
+            // Handle front view look-around
+            if (this.viewAngle === 'front' && this.lookAroundState.dragging) {
+                event.preventDefault();
+                const deltaX = event.clientX - this.lookAroundState.mouseX;
+                const deltaY = event.clientY - this.lookAroundState.mouseY;
+
+                // Convert mouse movement to rotation (inverted - drag scene, not camera)
+                const rotateSpeed = 0.003;
+                this.lookAroundState.currentYaw -= deltaX * rotateSpeed;
+                this.lookAroundState.currentPitch -= deltaY * rotateSpeed;
+
+                // Clamp to FOV limits
+                this.lookAroundState.currentYaw = Math.max(-this.lookAroundState.maxYaw,
+                    Math.min(this.lookAroundState.maxYaw, this.lookAroundState.currentYaw));
+                this.lookAroundState.currentPitch = Math.max(-this.lookAroundState.maxPitch,
+                    Math.min(this.lookAroundState.maxPitch, this.lookAroundState.currentPitch));
+
+                // Update camera look direction
+                this.updateCameraLookAround();
+
+                this.lookAroundState.mouseX = event.clientX;
+                this.lookAroundState.mouseY = event.clientY;
+                return;
+            }
+
             if (!this.orbitState.enabled || !this.orbitState.dragging) return;
-            
+
             event.preventDefault();
             const deltaX = event.clientX - this.orbitState.mouseX;
             const deltaY = event.clientY - this.orbitState.mouseY;
-            
+
             // Convert mouse movement to spherical coordinates
             const rotateSpeed = 0.01;
             this.orbitState.spherical.theta -= deltaX * rotateSpeed; // Horizontal movement (left/right)
             this.orbitState.spherical.phi -= deltaY * rotateSpeed;   // Vertical movement (up/down) - inverted to match mouse direction
-            
+
             // Constrain phi to prevent flipping (keep between 0.1 and PI-0.1)
             this.orbitState.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.orbitState.spherical.phi));
-            
+
             this.updateCameraFromSpherical();
-            
+
             this.orbitState.mouseX = event.clientX;
             this.orbitState.mouseY = event.clientY;
         };
         
         const onMouseUp = (event) => {
+            // Handle front view look-around release (trigger spring-back)
+            if (this.viewAngle === 'front' && this.lookAroundState.dragging) {
+                event.preventDefault();
+                this.lookAroundState.dragging = false;
+                this.lookAroundState.springBack = true; // Trigger spring-back animation
+                canvas.style.cursor = 'grab';
+                return;
+            }
+
             if (this.orbitState.dragging) {
                 event.preventDefault();
             }
@@ -754,22 +817,38 @@ class ScreenVisualizer3D {
         
         // Touch support for orbit controls
         const onTouchStart = (event) => {
+            // Handle front view look-around
+            if (this.viewAngle === 'front' && event.touches.length === 1) {
+                event.preventDefault();
+                this.lookAroundState.dragging = true;
+                const touch = event.touches[0];
+                this.lookAroundState.mouseX = touch.clientX;
+                this.lookAroundState.mouseY = touch.clientY;
+                this.lookAroundState.springBack = false;
+
+                // Update FOV limits based on current screens
+                const fovLimits = this.calculateLookAroundFOVLimits();
+                this.lookAroundState.maxYaw = fovLimits.maxYaw;
+                this.lookAroundState.maxPitch = fovLimits.maxPitch;
+                return;
+            }
+
             if (!this.orbitState.enabled || event.touches.length !== 1) return;
-            
+
             event.preventDefault();
             this.orbitState.dragging = true;
             const touch = event.touches[0];
             this.orbitState.mouseX = touch.clientX;
             this.orbitState.mouseY = touch.clientY;
-            
+
             // Stop camera animation when user starts manual orbiting
             this.isAnimating = false;
-            
+
             // Update orbit state to use current camera position as starting point
             if (this.viewAngle === '3d') {
                 const offset = new THREE.Vector3();
                 offset.copy(this.camera.position).sub(this.orbitState.target);
-                
+
                 const radius = offset.length();
                 if (radius > 0) {
                     const phi = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
@@ -778,30 +857,64 @@ class ScreenVisualizer3D {
                 }
             }
         };
-        
+
         const onTouchMove = (event) => {
+            // Handle front view look-around
+            if (this.viewAngle === 'front' && this.lookAroundState.dragging && event.touches.length === 1) {
+                event.preventDefault();
+                const touch = event.touches[0];
+                const deltaX = touch.clientX - this.lookAroundState.mouseX;
+                const deltaY = touch.clientY - this.lookAroundState.mouseY;
+
+                // Convert touch movement to rotation (inverted - drag scene, not camera)
+                const rotateSpeed = 0.003;
+                this.lookAroundState.currentYaw -= deltaX * rotateSpeed;
+                this.lookAroundState.currentPitch -= deltaY * rotateSpeed;
+
+                // Clamp to FOV limits
+                this.lookAroundState.currentYaw = Math.max(-this.lookAroundState.maxYaw,
+                    Math.min(this.lookAroundState.maxYaw, this.lookAroundState.currentYaw));
+                this.lookAroundState.currentPitch = Math.max(-this.lookAroundState.maxPitch,
+                    Math.min(this.lookAroundState.maxPitch, this.lookAroundState.currentPitch));
+
+                // Update camera look direction
+                this.updateCameraLookAround();
+
+                this.lookAroundState.mouseX = touch.clientX;
+                this.lookAroundState.mouseY = touch.clientY;
+                return;
+            }
+
             if (!this.orbitState.enabled || !this.orbitState.dragging || event.touches.length !== 1) return;
-            
+
             event.preventDefault();
             const touch = event.touches[0];
             const deltaX = touch.clientX - this.orbitState.mouseX;
             const deltaY = touch.clientY - this.orbitState.mouseY;
-            
+
             // Convert touch movement to spherical coordinates (same speed as mouse)
             const rotateSpeed = 0.01;
             this.orbitState.spherical.theta -= deltaX * rotateSpeed;
             this.orbitState.spherical.phi -= deltaY * rotateSpeed;
-            
+
             // Constrain phi to prevent flipping
             this.orbitState.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.orbitState.spherical.phi));
-            
+
             this.updateCameraFromSpherical();
-            
+
             this.orbitState.mouseX = touch.clientX;
             this.orbitState.mouseY = touch.clientY;
         };
-        
+
         const onTouchEnd = (event) => {
+            // Handle front view look-around release (trigger spring-back)
+            if (this.viewAngle === 'front' && this.lookAroundState.dragging) {
+                event.preventDefault();
+                this.lookAroundState.dragging = false;
+                this.lookAroundState.springBack = true; // Trigger spring-back animation
+                return;
+            }
+
             if (this.orbitState.dragging) {
                 event.preventDefault();
             }
@@ -898,22 +1011,51 @@ class ScreenVisualizer3D {
             document.removeEventListener('touchend', onTouchEnd);
         };
         
-        // Set initial cursor
-        canvas.style.cursor = 'default';
+        // Set initial cursor (grab for front and 3D views)
+        const allowsInteraction = (this.viewAngle === 'front' || this.viewAngle === '3d');
+        canvas.style.cursor = allowsInteraction ? 'grab' : 'default';
     }
     
     updateCameraFromSpherical() {
         if (!this.camera) return;
-        
+
         // Convert spherical coordinates to cartesian and position camera
         const position = new THREE.Vector3();
         position.setFromSpherical(this.orbitState.spherical);
         position.add(this.orbitState.target);
-        
+
         this.camera.position.copy(position);
         this.camera.lookAt(this.orbitState.target);
     }
-    
+
+    // Update camera look direction for front view look-around
+    updateCameraLookAround() {
+        if (!this.camera || this.viewAngle !== 'front') return;
+
+        // Camera stays at origin, only direction changes
+        // Base direction is (0, 0, -1) - looking towards negative Z
+        // Apply yaw (horizontal rotation around Y axis) and pitch (vertical rotation around X axis)
+
+        const direction = new THREE.Vector3(0, 0, -1);
+
+        // Create rotation quaternion from yaw and pitch
+        const quaternion = new THREE.Quaternion();
+        const euler = new THREE.Euler(
+            -this.lookAroundState.currentPitch, // Pitch (rotation around X)
+            -this.lookAroundState.currentYaw,   // Yaw (rotation around Y)
+            0,
+            'YXZ' // Apply yaw first, then pitch
+        );
+        quaternion.setFromEuler(euler);
+
+        // Apply rotation to direction
+        direction.applyQuaternion(quaternion);
+
+        // Set camera to look in this direction from origin
+        const lookAtPoint = new THREE.Vector3().copy(direction);
+        this.camera.lookAt(lookAtPoint);
+    }
+
     /**
      * Apply zoom by adjusting camera distance or spherical radius
      * @param {number} delta - Zoom delta (1.0 = no change, > 1.0 = zoom out, < 1.0 = zoom in)
@@ -967,7 +1109,45 @@ class ScreenVisualizer3D {
         
         return minDistance === Infinity ? CONFIG.DEFAULTS.PRESET_DISTANCE : minDistance;
     }
-    
+
+    // Calculate the maximum look-around FOV based on the largest screen
+    // Returns { maxYaw, maxPitch } in radians
+    calculateLookAroundFOVLimits() {
+        if (!this.screens || this.screens.length === 0) {
+            return { maxYaw: Math.PI / 6, maxPitch: Math.PI / 6 }; // Default 30 degrees
+        }
+
+        let maxHalfYaw = 0;
+        let maxHalfPitch = 0;
+
+        this.screens.forEach(screen => {
+            // Calculate screen dimensions
+            const ratio = screen.resolution[0] / screen.resolution[1];
+            const heightInches = screen.diagonal / Math.sqrt(ratio ** 2 + 1);
+            const widthInches = ratio * heightInches;
+
+            // Convert to meters
+            const widthMeters = (widthInches * CONFIG.PHYSICS.INCHES_TO_MM) / 1000;
+            const heightMeters = (heightInches * CONFIG.PHYSICS.INCHES_TO_MM) / 1000;
+
+            // Get distance in meters
+            const distanceMeters = (screen.distance || CONFIG.DEFAULTS.PRESET_DISTANCE) / 1000;
+
+            // Calculate half-angle FOV for this screen
+            // tan(halfAngle) = halfDimension / distance
+            const halfYaw = Math.atan2(widthMeters / 2, distanceMeters);
+            const halfPitch = Math.atan2(heightMeters / 2, distanceMeters);
+
+            maxHalfYaw = Math.max(maxHalfYaw, halfYaw);
+            maxHalfPitch = Math.max(maxHalfPitch, halfPitch);
+        });
+
+        return {
+            maxYaw: maxHalfYaw,
+            maxPitch: maxHalfPitch
+        };
+    }
+
     // Calculate hash of screen distances for change detection
     calculateDistanceHash() {
         if (!this.screens || this.screens.length === 0) {
@@ -1255,10 +1435,11 @@ class ScreenVisualizer3D {
         
         // Update manual orbit controls enabled state (only in 3D view)
         this.orbitState.enabled = (this.viewAngle === '3d');
-        
-        // Update cursor based on controls state
+
+        // Update cursor based on controls state (grab cursor for front and 3D views)
         if (this.renderer && this.renderer.domElement) {
-            this.renderer.domElement.style.cursor = this.orbitState.enabled ? 'grab' : 'default';
+            const allowsInteraction = (this.viewAngle === 'front' || this.viewAngle === '3d');
+            this.renderer.domElement.style.cursor = allowsInteraction ? 'grab' : 'default';
         }
     }
     
@@ -1344,21 +1525,48 @@ class ScreenVisualizer3D {
         if (!this.isInitialized) {
             return;
         }
-        
+
         // Handle smooth camera position transitions
         this.animateCamera();
-        
+
         // Handle smooth sphere fade in/out animations
         this.animateSphere();
-        
+
+        // Handle front view look-around spring-back animation
+        this.animateLookAroundSpringBack();
+
         // No controls update needed - manual orbit controls handle events directly
-        
+
         // No animation needed for static screen display
         // Just render the scene
         this.renderer.render(this.scene, this.camera);
-        
+
         // Continue the animation loop
         requestAnimationFrame(() => this.animate());
+    }
+
+    // Animate the spring-back to center when releasing look-around in front view
+    animateLookAroundSpringBack() {
+        if (!this.lookAroundState.springBack || this.viewAngle !== 'front') return;
+
+        // Spring-back animation speed (higher = faster)
+        const springSpeed = 0.1;
+
+        // Interpolate yaw and pitch back to 0
+        this.lookAroundState.currentYaw *= (1 - springSpeed);
+        this.lookAroundState.currentPitch *= (1 - springSpeed);
+
+        // Check if close enough to center to stop animating
+        const threshold = 0.001;
+        if (Math.abs(this.lookAroundState.currentYaw) < threshold &&
+            Math.abs(this.lookAroundState.currentPitch) < threshold) {
+            this.lookAroundState.currentYaw = 0;
+            this.lookAroundState.currentPitch = 0;
+            this.lookAroundState.springBack = false;
+        }
+
+        // Update camera direction
+        this.updateCameraLookAround();
     }
 
     setupEventListeners() {
@@ -1632,10 +1840,18 @@ class ScreenVisualizer3D {
         if (this.viewAngle !== angle) {
             const previousAngle = this.viewAngle;
             this.viewAngle = angle;
-            
+
+            // Reset look-around state when switching to front view
+            if (angle === 'front') {
+                this.lookAroundState.currentYaw = 0;
+                this.lookAroundState.currentPitch = 0;
+                this.lookAroundState.dragging = false;
+                this.lookAroundState.springBack = false;
+            }
+
             // Update toggle UI to match view state
             this.updateAngleToggleUI(angle);
-            
+
             if (this.isInitialized) {
                 // Capture current camera state BEFORE updateCameraPosition changes targets
                 const previousCameraPosition = this.camera.position.clone();
