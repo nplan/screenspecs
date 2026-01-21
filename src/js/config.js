@@ -171,6 +171,7 @@ const CONFIG = {
         { value: "43-3840-2160", diagonal: 43, width: 3840, height: 2160, distance: 600, curvature: null, name: "UHD 4K", label: '43" UHD 4K (3840 x 2160)' },
         { value: "45-5120-2160", diagonal: 45, width: 5120, height: 2160, distance: 750, curvature: 800, name: "5K2K", label: '45" 5K2K (5120 x 2160)' },
         { value: "49-5120-1440", diagonal: 49, width: 5120, height: 1440, distance: 600, curvature: 1800, name: "DQHD", label: '49" DQHD (5120 x 1440)' },
+        { value: "52-6144-2560", diagonal: 52, width: 6144, height: 2560, distance: 750, curvature: 4200, name: "6K UW", label: '52" 6K UW (6144 x 2560)' },
         { value: "57-7680-2160", diagonal: 57, width: 7680, height: 2160, distance: 650, curvature: 1000, name: "DUHD", label: '57" DUHD (7680 x 2160)' },
         { value: "65-3840-2160", diagonal: 65, width: 3840, height: 2160, distance: 1500, curvature: null, name: "UHD 4K", label: '65" 4K (3840 x 2160)' },
         { value: "65-7680-4320", diagonal: 65, width: 7680, height: 4320, distance: 1500, curvature: null, name: "8K", label: '65" 8K (7680 x 4320)' }
