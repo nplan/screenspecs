@@ -31,3 +31,6 @@ themeManager.setAccessibilityManager(accessibilityManager);
 window.screenManager = screenManager;
 window.themeManager = themeManager;
 window.accessibilityManager = accessibilityManager;
+
+// Set copyright year
+document.getElementById('copyright-year').textContent = new Date().getFullYear();

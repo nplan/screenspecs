@@ -151,6 +151,16 @@ footer {
     font-size: 0.7rem;
 }
 
+.copyright {
+    font-size: inherit;
+    line-height: 1;
+}
+
+.copyright-symbol {
+    font-size: 1.25em;
+    vertical-align: baseline;
+}
+
 /* Responsive design */
 @media (max-width: 1040px) {
     .header-controls {
