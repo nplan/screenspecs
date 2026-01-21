@@ -10,6 +10,28 @@ class AmazonLinkManager {
         // Initialize resolution names from presets configuration
         this.resolutionNames = {};
         this.initializeResolutionNames();
+
+        // Hide Amazon links if disabled in config
+        if (!this.isEnabled()) {
+            this.hideAllAmazonLinks();
+        }
+    }
+
+    /**
+     * Check if Amazon links are enabled in configuration
+     * @returns {boolean} True if Amazon links should be shown
+     */
+    isEnabled() {
+        return CONFIG.AMAZON.ENABLED !== false;
+    }
+
+    /**
+     * Hide all Amazon link containers
+     */
+    hideAllAmazonLinks() {
+        document.querySelectorAll('.amazon-link-container').forEach(container => {
+            container.style.display = 'none';
+        });
     }
 
     /**
@@ -89,6 +111,11 @@ class AmazonLinkManager {
      * @returns {boolean} True if link was updated successfully
      */
     updateAmazonLink(screenId, diagonal, resolution) {
+        // Skip if Amazon links are disabled
+        if (!this.isEnabled()) {
+            return false;
+        }
+
         const container = document.querySelector(`[data-screen-id="${screenId}"]`);
         if (!container) {
             console.warn(`Container not found for screen ${screenId}`);

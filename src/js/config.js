@@ -91,6 +91,8 @@ const CONFIG = {
 
     // Amazon Affiliate Configuration
     AMAZON: {
+        // Set to false to hide Amazon links in all screen boxes
+        ENABLED: true,
         // Amazon Associates affiliate tag for monetization
         // Format: 'your-affiliate-tag-20'
         // This tag is appended to Amazon search URLs to track referrals
