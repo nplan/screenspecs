@@ -26,12 +26,16 @@ class AmazonLinkManager {
     }
 
     /**
-     * Hide all Amazon link containers
+     * Hide all Amazon link containers and disclosure
      */
     hideAllAmazonLinks() {
         document.querySelectorAll('.amazon-link-container').forEach(container => {
             container.style.display = 'none';
         });
+        const disclosure = document.querySelector('.amazon-disclosure');
+        if (disclosure) {
+            disclosure.style.display = 'none';
+        }
     }
 
     /**

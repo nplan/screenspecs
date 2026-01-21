@@ -731,6 +731,14 @@ fieldset legend {
     text-transform: lowercase;
 }
 
+.affiliate-tag {
+    font-size: 0.65rem;
+    margin-left: 0.4rem;
+    opacity: 0.8;
+    vertical-align: baseline;
+    font-weight: normal;
+}
+
 .amazon-link:hover {
     color: var(--text-secondary);
 }
